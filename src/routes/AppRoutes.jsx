@@ -15,16 +15,17 @@ import { useAuth } from '../hooks/useAuth';
 
 const AppRoutes = () => {
   const { user } = useAuth();
+  const token = localStorage.getItem('eers_token');
 
   return (
     <Routes>
       {/* Public Route */}
-      <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
+      <Route path="/login" element={!token ? <Login /> : <Navigate to="/" replace />} />
 
       {/* Protected Routes wrapped in AppLayout */}
       <Route element={<AppLayout />}>
         <Route path="/" element={
-          user ? <Navigate to={`/${user.role.toLowerCase()}`} replace /> : <Navigate to="/login" replace />
+          token && user ? <Navigate to={`/${user.role.toLowerCase()}`} replace /> : <Navigate to="/login" replace />
         } />
         
         <Route path="/employee" element={<EmployeeDashboard />} />

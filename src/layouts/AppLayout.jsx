@@ -8,8 +8,10 @@ const AppLayout = () => {
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const token = localStorage.getItem('eers_token');
+
   // Protected route check
-  if (!user) {
+  if (!token) {
     return <Navigate to="/login" replace />;
   }
 

@@ -379,7 +379,7 @@ const Reports = () => {
             >
               <option value="">All Categories</option>
               {filterMetadata.categories.map(c => (
-                <option key={cat => cat._id} value={c._id}>{c.name}</option>
+                <option key={c._id} value={c._id}>{c.name}</option>
               ))}
             </select>
           </div>
