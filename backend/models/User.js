@@ -26,6 +26,15 @@ const userSchema = new mongoose.Schema({
     enum: ['Employee', 'HOD', 'Finance', 'Accounts', 'Admin'],
     default: 'Employee'
   },
+  employeeId: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  phoneNumber: {
+    type: String,
+    trim: true
+  },
   department: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department'
@@ -37,6 +46,16 @@ const userSchema = new mongoose.Schema({
   allottedBudget: {
     type: Number,
     default: 10000
+  },
+  refreshTokens: {
+    type: [String],
+    default: []
+  },
+  resetPasswordToken: {
+    type: String
+  },
+  resetPasswordExpire: {
+    type: Date
   }
 }, {
   timestamps: true

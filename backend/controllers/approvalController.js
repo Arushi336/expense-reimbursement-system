@@ -31,8 +31,12 @@ export const processApproval = async (req, res, next) => {
       if (claim.status !== 'Pending Finance') {
         return res.status(400).json({ success: false, message: 'Claim is not in Finance verification state' });
       }
+    } else if (userRole === 'Accounts') {
+      if (claim.status !== 'Pending Settlement') {
+        return res.status(400).json({ success: false, message: 'Claim is not in Accounts settlement state' });
+      }
     } else {
-      return res.status(403).json({ success: false, message: 'Only HOD or Finance roles can review claims' });
+      return res.status(403).json({ success: false, message: 'Only HOD, Finance, or Accounts roles can review claims' });
     }
 
     let nextStatus = '';
@@ -46,14 +50,19 @@ export const processApproval = async (req, res, next) => {
         nextStep = 'Finance';
         notificationType = 'ClaimApproved';
         notificationMsg = `Your claim ${claim.id} was approved by Department Head ${req.user.name}. Sent to Finance.`;
-      } else {
+      } else if (userRole === 'Finance') {
         nextStatus = 'Pending Settlement';
         nextStep = 'Accounts';
         notificationType = 'ClaimApproved';
         notificationMsg = `Your claim ${claim.id} passed Finance Audit by ${req.user.name}. Sent to Accounts.`;
+      } else {
+        nextStatus = 'Approved & Settled';
+        nextStep = 'Completed';
+        notificationType = 'PaymentCompleted';
+        notificationMsg = `Your claim ${claim.id} was settled and approved by Accounts.`;
       }
     } else if (action === 'Reject') {
-      nextStatus = userRole === 'HOD' ? 'Rejected by HOD' : 'Rejected by Finance';
+      nextStatus = userRole === 'HOD' ? 'Rejected by HOD' : userRole === 'Finance' ? 'Rejected by Finance' : 'Rejected by Accounts';
       nextStep = 'Completed';
       notificationType = 'ClaimRejected';
       notificationMsg = `Your claim ${claim.id} was rejected by ${req.user.name} (${userRole}). Remarks: ${remarks}`;
@@ -61,7 +70,7 @@ export const processApproval = async (req, res, next) => {
       nextStatus = 'Returned for Correction';
       nextStep = 'Draft';
       notificationType = 'CorrectionRequested';
-      notificationMsg = `Your claim ${claim.id} was returned for correction by ${req.user.name}. Reason: ${remarks}`;
+      notificationMsg = `Your claim ${claim.id} was returned for correction by ${req.user.name} (${userRole}). Reason: ${remarks}`;
     } else {
       return res.status(400).json({ success: false, message: 'Invalid action type' });
     }

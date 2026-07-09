@@ -1,89 +1,39 @@
 import express from 'express';
-import { registerUser, loginUser, getUserProfile } from '../controllers/authController.js';
+import { 
+  registerUser, 
+  loginUser, 
+  getUserProfile, 
+  updateUserProfile,
+  refreshSession,
+  forgotPassword,
+  resetPasswordController,
+  changePassword,
+  logoutUser
+} from '../controllers/authController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { validateBody } from '../middleware/validationMiddleware.js';
-import { registerSchema, loginSchema } from '../validators/authValidator.js';
+import { 
+  registerSchema, 
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  changePasswordSchema,
+  updateProfileSchema
+} from '../validators/authValidator.js';
 
 const router = express.Router();
 
-/**
- * @swagger
- * /api/auth/register:
- *   post:
- *     summary: Register a new employee user account
- *     tags: [Authentication]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - email
- *               - password
- *             properties:
- *               name:
- *                 type: string
- *               email:
- *                 type: string
- *               password:
- *                 type: string
- *               role:
- *                 type: string
- *                 enum: [Employee, HOD, Finance, Accounts, Admin]
- *               allottedBudget:
- *                 type: number
- *     responses:
- *       201:
- *         description: User registered successfully
- *       400:
- *         description: Validation failed or user exists
- */
+// Public routes
 router.post('/register', validateBody(registerSchema), registerUser);
-
-/**
- * @swagger
- * /api/auth/login:
- *   post:
- *     summary: Authenticate user & return JWT token
- *     tags: [Authentication]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *               password:
- *                 type: string
- *     responses:
- *       200:
- *         description: Login successful
- *       401:
- *         description: Invalid email or password
- */
 router.post('/login', validateBody(loginSchema), loginUser);
+router.post('/refresh', refreshSession);
+router.post('/forgot-password', validateBody(forgotPasswordSchema), forgotPassword);
+router.put('/reset-password/:token', validateBody(resetPasswordSchema), resetPasswordController);
 
-/**
- * @swagger
- * /api/auth/profile:
- *   get:
- *     summary: Retrieve currently logged-in user profile details
- *     tags: [Authentication]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: Profile retrieved successfully
- *       401:
- *         description: Unauthorized
- */
+// Protected routes
 router.get('/profile', protect, getUserProfile);
+router.put('/profile', protect, validateBody(updateProfileSchema), updateUserProfile);
+router.put('/change-password', protect, validateBody(changePasswordSchema), changePassword);
+router.post('/logout', protect, logoutUser);
 
 export default router;

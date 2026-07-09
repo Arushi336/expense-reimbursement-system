@@ -4,13 +4,24 @@ import {
   getMonthlySpend, 
   getCategorySpend, 
   getDepartmentSpend,
-  getApprovalTimeStats
+  getApprovalTimeStats,
+  getComprehensiveReportData
 } from '../controllers/reportController.js';
-import { protect } from '../middleware/authMiddleware.js';
+import { 
+  exportExcelReport,
+  exportWordReport,
+  exportPdfReport
+} from '../controllers/reportsExportController.js';
+import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 router.use(protect);
+
+router.get('/comprehensive', authorizeRoles('Finance', 'Accounts'), getComprehensiveReportData);
+router.get('/export/excel', authorizeRoles('Finance', 'Accounts'), exportExcelReport);
+router.get('/export/word', authorizeRoles('Finance', 'Accounts'), exportWordReport);
+router.get('/export/pdf', authorizeRoles('Finance', 'Accounts'), exportPdfReport);
 
 /**
  * @swagger

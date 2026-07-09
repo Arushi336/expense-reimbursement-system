@@ -1,105 +1,52 @@
 import express from 'express';
-import { getAuditLogs, getDepartments, createDepartment, getCategories, createCategory } from '../controllers/adminController.js';
+import { 
+  getAuditLogs, 
+  getDepartments, 
+  createDepartment, 
+  updateDepartment,
+  deleteDepartment,
+  getCategories, 
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  getUsers,
+  createUser,
+  getUserById,
+  updateUser,
+  deleteUser,
+  getSystemSettingsController,
+  updateSystemSettingsController
+} from '../controllers/adminController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 router.use(protect);
 
-/**
- * @swagger
- * /api/admin/audit-logs:
- *   get:
- *     summary: Retrieve system administration activity logs
- *     tags: [Admin Settings]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: List of audit logs retrieved
- */
+// Global settings
+router.get('/settings', getSystemSettingsController);
+router.put('/settings', authorizeRoles('Admin'), updateSystemSettingsController);
+
+// Audit logs
 router.get('/audit-logs', authorizeRoles('Admin'), getAuditLogs);
 
-/**
- * @swagger
- * /api/admin/departments:
- *   get:
- *     summary: Get list of all corporate departments
- *     tags: [Admin Settings]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: Departments list
- *   post:
- *     summary: Register a new corporate department
- *     tags: [Admin Settings]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - code
- *             properties:
- *               name:
- *                 type: string
- *               code:
- *                 type: string
- *               hodId:
- *                 type: string
- *               budget:
- *                 type: number
- *     responses:
- *       201:
- *         description: Department created
- */
+// Departments CRUD
 router.get('/departments', getDepartments);
 router.post('/departments', authorizeRoles('Admin'), createDepartment);
+router.put('/departments/:id', authorizeRoles('Admin'), updateDepartment);
+router.delete('/departments/:id', authorizeRoles('Admin'), deleteDepartment);
 
-/**
- * @swagger
- * /api/admin/categories:
- *   get:
- *     summary: Get list of active expense claim categories
- *     tags: [Admin Settings]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: Categories list
- *   post:
- *     summary: Register a new expense claim category
- *     tags: [Admin Settings]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - code
- *             properties:
- *               name:
- *                 type: string
- *               code:
- *                 type: string
- *               maxLimit:
- *                 type: number
- *               receiptRequired:
- *                 type: boolean
- *     responses:
- *       201:
- *         description: Category created
- */
+// Expense categories CRUD
 router.get('/categories', getCategories);
 router.post('/categories', authorizeRoles('Admin'), createCategory);
+router.put('/categories/:id', authorizeRoles('Admin'), updateCategory);
+router.delete('/categories/:id', authorizeRoles('Admin'), deleteCategory);
+
+// Users CRUD
+router.get('/users', authorizeRoles('Admin'), getUsers);
+router.post('/users', authorizeRoles('Admin'), createUser);
+router.get('/users/:id', authorizeRoles('Admin'), getUserById);
+router.put('/users/:id', authorizeRoles('Admin'), updateUser);
+router.delete('/users/:id', authorizeRoles('Admin'), deleteUser);
 
 export default router;

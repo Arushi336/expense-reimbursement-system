@@ -35,7 +35,11 @@ const AppRoutes = () => {
         
         <Route path="/submit-expense" element={<ExpenseForm />} />
         <Route path="/expense-history" element={<ExpenseHistory />} />
-        <Route path="/reports" element={<Reports />} />
+        <Route path="/reports" element={
+          user && ['Finance', 'Accounts'].includes(user.role) 
+            ? <Reports /> 
+            : <Navigate to="/" replace />
+        } />
       </Route>
 
       {/* Fallback Route */}

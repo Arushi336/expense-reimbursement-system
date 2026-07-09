@@ -8,7 +8,7 @@ import { FiDollarSign, FiClock, FiCheckSquare, FiFolderPlus } from 'react-icons/
 
 const AccountsDashboard = () => {
   const { user } = useAuth();
-  const { expenses, fetchExpenses, executePayment } = useExpenses();
+  const { expenses, fetchExpenses, executePayment, executeApproval } = useExpenses();
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
@@ -32,8 +32,17 @@ const AccountsDashboard = () => {
   }, []);
 
   const handleAction = async (expenseId, nextStatus, comment) => {
-    // accounts disburse takes transaction ID as the comment
-    await executePayment(expenseId, comment || `TXN-${Date.now()}`);
+    if (nextStatus === 'Approved & Settled') {
+      await executePayment(expenseId, comment || `TXN-${Date.now()}`);
+    } else {
+      let action = 'Approve';
+      if (nextStatus === 'Returned for Correction') {
+        action = 'Return for Correction';
+      } else if (nextStatus === 'Rejected') {
+        action = 'Reject';
+      }
+      await executeApproval(expenseId, action, comment);
+    }
     fetchStatsAndClaims();
   };
 

@@ -16,6 +16,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
   const [selectedExpense, setSelectedExpense] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [actionComment, setActionComment] = useState('');
+  const [txnRef, setTxnRef] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
@@ -90,6 +91,36 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
     }
   };
 
+  const getWorkflowStep = (status) => {
+    switch (status) {
+      case 'Draft':
+      case 'Returned for Correction':
+        return 0;
+      case 'Submitted':
+        return 1;
+      case 'Pending Finance':
+        return 2;
+      case 'Pending Settlement':
+        return 3;
+      case 'Approved & Settled':
+        return 4;
+      case 'Rejected by HOD':
+      case 'Rejected by Finance':
+      case 'Rejected':
+        return -1;
+      default:
+        return 1;
+    }
+  };
+
+  const workflowStages = [
+    { label: 'Employee', desc: 'Draft/Filed' },
+    { label: 'HOD', desc: 'Manager Approved' },
+    { label: 'Finance', desc: 'Audit Verified' },
+    { label: 'Accounts', desc: 'Disbursed' },
+    { label: 'Completed', desc: 'Reimbursed' }
+  ];
+
   // Role Action Checker
   const canActOnExpense = (status) => {
     if (userRole === 'HOD' && status === 'Submitted') return true;
@@ -99,6 +130,18 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
   };
 
   const executeAction = (expenseId, nextStatus) => {
+    // Require remarks for Reject or Return for Correction actions
+    if ((nextStatus === 'Rejected' || nextStatus === 'Returned for Correction') && !actionComment.trim()) {
+      alert(`Remarks/Notes are required to return or reject a claim. Please enter your comments in the Decision Remarks box.`);
+      return;
+    }
+
+    // Require confirmation for Reject
+    if (nextStatus === 'Rejected') {
+      const confirmReject = window.confirm("Are you sure you want to REJECT this expense claim? This will permanently cancel the approval process.");
+      if (!confirmReject) return;
+    }
+
     if (onAction) {
       onAction(expenseId, nextStatus, actionComment);
     }
@@ -131,7 +174,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
             onClick={() => executeAction(exp._id, 'Returned for Correction')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold shadow transition-colors"
           >
-            <FiHelpCircle size={14} /> Send Back
+            <FiHelpCircle size={14} /> Return for Correction
           </button>
           <button 
             onClick={() => executeAction(exp._id, 'Rejected')}
@@ -156,7 +199,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
             onClick={() => executeAction(exp._id, 'Returned for Correction')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold shadow transition-colors"
           >
-            <FiHelpCircle size={14} /> Query Back
+            <FiHelpCircle size={14} /> Return for Correction
           </button>
           <button 
             onClick={() => executeAction(exp._id, 'Rejected')}
@@ -170,24 +213,46 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
 
     if (userRole === 'Accounts') {
       return (
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-bold text-slate-600 block mb-1">Enter Bank Wire Reference ID</label>
+        <div className="w-full space-y-4">
+          <div className="bg-slate-100/60 p-3 rounded-xl border border-slate-200 space-y-2">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Bank Transfer Transaction Reference ID</label>
             <input 
               type="text" 
-              placeholder="e.g. TXN987234234"
-              value={actionComment}
-              onChange={(e) => setActionComment(e.target.value)}
-              className="w-full p-2 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-corporate-500"
+              placeholder="Enter Bank ACH / Wire Ref (e.g. TXN-987234)"
+              value={txnRef}
+              onChange={(e) => setTxnRef(e.target.value)}
+              className="w-full p-2 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-corporate-500 bg-white"
             />
           </div>
-          <button 
-            onClick={() => executeAction(exp._id, 'Approved & Settled')}
-            disabled={!actionComment.trim()}
-            className="w-full flex justify-center items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded font-semibold shadow transition-colors"
-          >
-            <FiCheck size={16} /> Disburse & Settle Payout
-          </button>
+          
+          <div className="flex gap-2 justify-end w-full">
+            <button 
+              onClick={() => {
+                if (!txnRef.trim()) {
+                  alert("Please enter a Bank Transaction ID to disburse payment.");
+                  return;
+                }
+                if (onAction) onAction(exp._id, 'Approved & Settled', txnRef.trim());
+                setTxnRef('');
+                setSelectedExpense(null);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-xs font-semibold shadow transition-colors"
+            >
+              <FiCheck size={14} /> Mark as Paid
+            </button>
+            <button 
+              onClick={() => executeAction(exp._id, 'Returned for Correction')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold shadow transition-colors"
+            >
+              <FiHelpCircle size={14} /> Return for Correction
+            </button>
+            <button 
+              onClick={() => executeAction(exp._id, 'Rejected')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold shadow transition-colors"
+            >
+              <FiX size={14} /> Reject Payment
+            </button>
+          </div>
         </div>
       );
     }
@@ -202,7 +267,9 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
   const getReceiptSrc = (url) => {
     if (!url) return '';
     if (url.startsWith('http')) return url;
-    return `http://localhost:5000/uploads/${url}`;
+    const parts = url.split(/[\\/]/);
+    const filename = parts[parts.length - 1];
+    return `http://localhost:5000/uploads/${filename}`;
   };
 
   const handleExportCSV = () => {
@@ -243,12 +310,14 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-corporate-500"
           >
             <option value="ALL">All Categories</option>
-            <option value="TRAVEL">Travel & Lodging</option>
-            <option value="MEALS">Meals & Entertainment</option>
-            <option value="EQUIPMENT">Office Equipment</option>
-            <option value="SOFTWARE">Software & Subs</option>
-            <option value="UTILITIES">Telecom & WiFi</option>
-            <option value="OTHER">Miscellaneous</option>
+            <option value="TRAVEL">Travel</option>
+            <option value="FOOD">Food</option>
+            <option value="ACCOMMODATION">Accommodation</option>
+            <option value="FUEL">Fuel</option>
+            <option value="MEDICAL">Medical</option>
+            <option value="SUPPLIES">Office Supplies</option>
+            <option value="TRAINING">Training</option>
+            <option value="OTHER">Others</option>
           </select>
 
           <select
@@ -280,14 +349,14 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 text-xs font-semibold uppercase text-slate-500 bg-slate-50">
-              <th onClick={() => handleSort('id')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition">ID {getSortIcon('id')}</th>
-              <th onClick={() => handleSort('title')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition">Expense Detail {getSortIcon('title')}</th>
-              <th onClick={() => handleSort('employeeName')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition">Employee {getSortIcon('employeeName')}</th>
-              <th onClick={() => handleSort('amount')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition text-right">Amount {getSortIcon('amount')}</th>
-              <th onClick={() => handleSort('date')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition">Date {getSortIcon('date')}</th>
-              <th className="py-3.5 px-5">Status</th>
-              <th className="py-3.5 px-5 text-center">Actions</th>
+            <tr className="border-b border-slate-200 text-xs font-semibold uppercase text-slate-500 bg-slate-50 sticky top-0 z-10">
+              <th onClick={() => handleSort('id')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition sticky top-0 bg-slate-50 z-10">ID {getSortIcon('id')}</th>
+              <th onClick={() => handleSort('title')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition sticky top-0 bg-slate-50 z-10">Expense Detail {getSortIcon('title')}</th>
+              <th onClick={() => handleSort('employeeName')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition sticky top-0 bg-slate-50 z-10">Employee {getSortIcon('employeeName')}</th>
+              <th onClick={() => handleSort('amount')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition text-right sticky top-0 bg-slate-50 z-10">Amount {getSortIcon('amount')}</th>
+              <th onClick={() => handleSort('date')} className="py-3.5 px-5 cursor-pointer hover:bg-slate-100 transition sticky top-0 bg-slate-50 z-10">Date {getSortIcon('date')}</th>
+              <th className="py-3.5 px-5 sticky top-0 bg-slate-50 z-10">Status</th>
+              <th className="py-3.5 px-5 text-center sticky top-0 bg-slate-50 z-10">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
@@ -311,33 +380,43 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                     <StatusBadge status={exp.status} />
                   </td>
                   <td className="py-4 px-5 text-center">
-                    <div className="flex justify-center gap-1.5">
+                    <div className="flex justify-center gap-2">
                       <button
                         onClick={() => handleViewDetails(exp)}
-                        className="p-2 border border-slate-200 rounded-lg hover:border-corporate-400 text-slate-500 hover:text-corporate-600 hover:bg-corporate-50 transition"
-                        title="View Details"
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-355 hover:border-corporate-300 text-slate-700 hover:bg-slate-50 rounded-lg text-xs font-semibold shadow-sm transition"
                       >
-                        <FiEye size={16} />
+                        <FiEye size={13} className="mr-1" /> View Details
                       </button>
 
                       {canActOnExpense(exp.status) && (
-                        <button
-                          onClick={() => handleQuickAction(exp)}
-                          className={`p-2 border rounded-lg transition text-white ${
-                            userRole === 'Accounts'
-                              ? 'bg-purple-600 border-purple-600 hover:bg-purple-700 hover:border-purple-700'
-                              : 'bg-emerald-600 border-emerald-600 hover:bg-emerald-700 hover:border-emerald-700'
-                          }`}
-                          title={
-                            userRole === 'HOD'
-                              ? 'Quick Approve'
-                              : userRole === 'Finance'
-                              ? 'Quick Verify'
-                              : 'Quick Settle'
-                          }
-                        >
-                          <FiCheck size={16} />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleQuickAction(exp)}
+                            className="p-1.5 bg-emerald-55 text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-600 hover:text-white transition shadow-sm"
+                            title={
+                              userRole === 'HOD' ? 'Quick Approve' : userRole === 'Finance' ? 'Quick Verify' : 'Quick Settle'
+                            }
+                          >
+                            <FiCheck size={15} />
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              handleViewDetails(exp);
+                              setTimeout(() => {
+                                const textarea = document.querySelector('textarea[placeholder*="Enter audit rationale"]');
+                                if (textarea) {
+                                  textarea.focus();
+                                  textarea.scrollIntoView({ behavior: 'smooth' });
+                                }
+                              }, 400);
+                            }}
+                            className="p-1.5 bg-rose-55 text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-600 hover:text-white transition shadow-sm"
+                            title="Return or Reject Claim"
+                          >
+                            <FiX size={15} />
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -420,7 +499,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
             </div>
 
             {/* Drawer Body (Scrollable) */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-6 pb-72 space-y-6">
               {modalLoading ? (
                 <div className="p-12 text-center space-y-4">
                   <div className="w-10 h-10 border-4 border-corporate-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -428,6 +507,47 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                 </div>
               ) : (
                 <>
+                  {/* Visual Workflow Stepper Progress Indicator */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-3">Claim Review Lifecycle</span>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                      {workflowStages.map((stage, idx) => {
+                        const currentStep = getWorkflowStep(selectedExpense.status);
+                        const isCompleted = currentStep > idx;
+                        const isActive = currentStep === idx;
+                        const isRejected = currentStep === -1;
+                        
+                        return (
+                          <div key={idx} className="flex flex-row sm:flex-col items-center gap-2 flex-1 w-full relative">
+                            {idx < workflowStages.length - 1 && (
+                              <div className="hidden sm:block absolute top-4 left-1/2 w-full h-[2px] -z-10"
+                                   style={{ backgroundColor: isCompleted ? '#10b981' : '#e2e8f0' }} />
+                            )}
+                            
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                              isCompleted 
+                                ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-100' 
+                                : isActive 
+                                ? 'bg-corporate-600 text-white ring-4 ring-corporate-100' 
+                                : isRejected && idx === currentStep + 1
+                                ? 'bg-rose-600 text-white shadow-sm'
+                                : 'bg-slate-200 text-slate-500'
+                            }`}>
+                              {isCompleted ? <FiCheck size={14} /> : idx + 1}
+                            </div>
+                            
+                            <div className="text-left sm:text-center shrink-0">
+                              <span className={`block text-xs font-bold ${
+                                isActive ? 'text-corporate-700' : isCompleted ? 'text-emerald-700' : 'text-slate-500'
+                              }`}>{stage.label}</span>
+                              <span className="block text-[9px] text-slate-400 leading-none">{stage.desc}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Core Details Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex items-center gap-3">
@@ -480,12 +600,20 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                             <a href={getReceiptSrc(selectedExpense.receiptUrl)} target="_blank" rel="noreferrer" className="text-xs font-bold text-corporate-600 hover:underline">Download PDF Document</a>
                           </div>
                         ) : (
-                          <div className="space-y-2">
+                          <div className="space-y-2 text-center">
                             <img 
                               src={getReceiptSrc(selectedExpense.receiptUrl)} 
                               alt="Receipt" 
                               className="max-h-60 mx-auto object-contain border bg-white rounded-lg"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                const errDiv = e.target.parentNode.querySelector('.receipt-error-msg');
+                                if (errDiv) errDiv.style.display = 'block';
+                              }}
                             />
+                            <div className="receipt-error-msg hidden text-xs text-rose-600 font-semibold p-4 text-center border border-dashed border-rose-200 bg-rose-50/50 rounded-lg">
+                              Receipt file could not be loaded (it may have been deleted from local storage).
+                            </div>
                             <a href={getReceiptSrc(selectedExpense.receiptUrl)} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-corporate-500 hover:underline text-center block">Open receipt image in new window</a>
                           </div>
                         )}
@@ -507,20 +635,24 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
 
                   {/* OCR AI Scanner Predictions */}
                   {selectedExpense.receiptUrl && selectedExpense.ocrConfidence && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5"><FiBriefcase className="text-corporate-600" /> OCR AI Receipt Verification</h4>
-                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500 font-medium">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[10px] text-slate-500 font-medium">
                         <div>
                           <span>OCR Merchant:</span>
-                          <strong className="text-slate-800 block">{selectedExpense.ocrVendor || 'Not scanned'}</strong>
+                          <strong className="text-slate-800 block text-xs mt-0.5 truncate" title={selectedExpense.ocrVendor}>{selectedExpense.ocrVendor || 'Not scanned'}</strong>
                         </div>
                         <div>
                           <span>OCR Amount:</span>
-                          <strong className="text-slate-800 block">₹{selectedExpense.ocrAmount?.toFixed(2) || 'Not scanned'}</strong>
+                          <strong className="text-slate-800 block text-xs mt-0.5">₹{selectedExpense.ocrAmount?.toFixed(2) || 'Not scanned'}</strong>
+                        </div>
+                        <div>
+                          <span>OCR Date:</span>
+                          <strong className="text-slate-800 block text-xs mt-0.5">{selectedExpense.ocrDate ? new Date(selectedExpense.ocrDate).toLocaleDateString() : 'Not scanned'}</strong>
                         </div>
                         <div>
                           <span>Confidence Score:</span>
-                          <strong className={`${selectedExpense.ocrConfidence > 90 ? 'text-emerald-600' : 'text-amber-500'} block`}>{selectedExpense.ocrConfidence}% Match</strong>
+                          <strong className={`${selectedExpense.ocrConfidence > 90 ? 'text-emerald-600' : 'text-amber-500'} block text-xs mt-0.5`}>{selectedExpense.ocrConfidence}% Match</strong>
                         </div>
                       </div>
                     </div>
@@ -566,24 +698,32 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
             </div>
 
             {/* Sticky Actions Footer */}
-            {!modalLoading && canActOnExpense(selectedExpense.status) && (
-              <div className="p-5 border-t border-slate-150 bg-slate-50/95 flex flex-col gap-3 shrink-0">
-                {userRole !== 'Accounts' && (
-                  <div className="w-full">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Decision Remarks / Notes</label>
-                    <textarea
-                      placeholder="Enter audit rationale, requested changes, or queries..."
-                      value={actionComment}
-                      onChange={(e) => setActionComment(e.target.value)}
-                      className="w-full p-2.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-corporate-500 bg-white"
-                      rows="2.5"
-                    />
+            {!modalLoading && (
+              canActOnExpense(selectedExpense.status) ? (
+                <div className="p-5 border-t border-slate-150 bg-slate-50/95 flex flex-col gap-3 shrink-0">
+                  {['HOD', 'Finance', 'Accounts'].includes(userRole) && (
+                    <div className="w-full">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Decision Remarks / Notes</label>
+                      <textarea
+                        placeholder="Enter audit rationale, requested changes, or queries..."
+                        value={actionComment}
+                        onChange={(e) => setActionComment(e.target.value)}
+                        className="w-full p-2.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-corporate-500 bg-white"
+                        rows="2.5"
+                      />
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2 w-full">
+                    {getActionButtons(selectedExpense)}
                   </div>
-                )}
-                <div className="flex justify-end gap-2 w-full">
-                  {getActionButtons(selectedExpense)}
                 </div>
-              </div>
+              ) : (
+                ['HOD', 'Finance', 'Accounts'].includes(userRole) && (
+                  <div className="p-5 border-t border-slate-150 bg-slate-100/90 text-slate-500 text-xs font-semibold text-center shrink-0">
+                    This claim is currently in <span className="font-bold text-slate-700">{selectedExpense.status}</span> status and does not require action from your role ({userRole}).
+                  </div>
+                )
+              )
             )}
           </div>
         </>

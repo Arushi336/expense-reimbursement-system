@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Department from '../models/Department.js';
 import ApprovalHistory from '../models/ApprovalHistory.js';
 import mongoose from 'mongoose';
+import { generateComprehensiveAnalytics } from '../services/reportService.js';
 
 // @desc    Get dashboard card stats based on user role
 // @route   GET /api/reports/dashboard
@@ -130,7 +131,7 @@ export const getMonthlySpend = async (req, res, next) => {
     if (req.user.role === 'Employee') {
       matchQuery.employee = req.user._id;
     } else if (req.user.role === 'HOD') {
-      matchQuery.department = req.user.department ? req.user.department._id : null;
+      matchQuery.department = req.user.department ? (req.user.department._id || req.user.department) : null;
     }
 
     const aggregates = await ExpenseClaim.aggregate([
@@ -169,7 +170,7 @@ export const getCategorySpend = async (req, res, next) => {
     if (req.user.role === 'Employee') {
       matchQuery.employee = req.user._id;
     } else if (req.user.role === 'HOD') {
-      matchQuery.department = req.user.department ? req.user.department._id : null;
+      matchQuery.department = req.user.department ? (req.user.department._id || req.user.department) : null;
     }
 
     const aggregates = await ExpenseClaim.aggregate([
@@ -257,6 +258,18 @@ export const getApprovalTimeStats = async (req, res, next) => {
     });
 
     res.status(200).json({ success: true, data: sampleData });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get comprehensive analytics report data
+// @route   GET /api/reports/comprehensive
+// @access  Private
+export const getComprehensiveReportData = async (req, res, next) => {
+  try {
+    const data = await generateComprehensiveAnalytics(req.query, req.user);
+    res.status(200).json({ success: true, data });
   } catch (error) {
     next(error);
   }

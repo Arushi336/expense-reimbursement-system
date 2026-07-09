@@ -5,6 +5,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import swaggerJSDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import xss from 'xss-clean';
 
 import connectDB from './config/db.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
@@ -29,6 +33,26 @@ dotenv.config();
 connectDB();
 
 const app = express();
+
+// Security Middlewares
+app.use(helmet());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { success: false, message: 'Too many requests, please try again after 15 minutes.' }
+});
+app.use('/api', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { success: false, message: 'Too many login attempts, please try again after 15 minutes.' }
+});
+app.use('/api/auth/login', authLimiter);
+
+app.use(mongoSanitize());
+app.use(xss());
 
 // Standard Middlewares
 app.use(cors({

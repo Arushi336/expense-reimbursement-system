@@ -5,11 +5,11 @@ import { useToast } from '../context/ToastContext';
 const AuthContext = createContext(null);
 
 const ROLE_EMAILS = {
-  employee: 'sarah.jenkins@corporate.com',
-  hod: 'marcus.brody@corporate.com',
-  finance: 'linda.vance@corporate.com',
-  accounts: 'gary.cooper@corporate.com',
-  admin: 'donald.knuth@corporate.com'
+  employee: 'arjun.sharma@company.com',
+  hod: 'rajesh.deshmukh@company.com',
+  finance: 'vivek.kulkarni@company.com',
+  accounts: 'suresh.iyer@company.com',
+  admin: 'amit.patil@company.com'
 };
 
 export const AuthProvider = ({ children }) => {

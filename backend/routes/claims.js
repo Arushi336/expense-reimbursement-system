@@ -1,5 +1,5 @@
 import express from 'express';
-import { createClaim, getClaims, getClaimById, updateClaim, deleteClaim } from '../controllers/claimController.js';
+import { createClaim, getClaims, getClaimById, updateClaim, deleteClaim, withdrawClaimController } from '../controllers/claimController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 import { uploadReceipt } from '../middleware/uploadMiddleware.js';
 import { validateBody } from '../middleware/validationMiddleware.js';
@@ -187,5 +187,6 @@ router.put('/:id', uploadReceipt, updateClaim);
  *         description: Only draft claims can be deleted
  */
 router.delete('/:id', authorizeRoles('Employee'), deleteClaim);
+router.post('/:id/withdraw', authorizeRoles('Employee'), withdrawClaimController);
 
 export default router;

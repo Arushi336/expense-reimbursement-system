@@ -46,6 +46,40 @@ const HODDashboard = () => {
     fetchStatsAndClaims();
   };
 
+  const getAverageApprovalTime = () => {
+    const approvedClaims = expenses.filter(c => 
+      c.history && c.history.length > 0 && 
+      c.history.some(h => h.action === 'Approve' && h.role === 'HOD')
+    );
+    
+    if (approvedClaims.length === 0) return 'N/A';
+    
+    let totalMs = 0;
+    let count = 0;
+    
+    approvedClaims.forEach(c => {
+      const submitLog = c.history.find(h => h.action === 'Submit');
+      const approveLog = c.history.find(h => h.action === 'Approve' && h.role === 'HOD');
+      
+      if (submitLog && approveLog) {
+        const diffMs = new Date(approveLog.timestamp) - new Date(submitLog.timestamp);
+        if (diffMs > 0) {
+          totalMs += diffMs;
+          count++;
+        }
+      }
+    });
+    
+    if (count === 0) return 'N/A';
+    
+    const avgDays = (totalMs / (1000 * 60 * 60 * 24));
+    if (avgDays < 0.1) {
+      const avgHours = (totalMs / (1000 * 60 * 60));
+      return `${avgHours.toFixed(1)} Hours`;
+    }
+    return `${avgDays.toFixed(1)} Days`;
+  };
+
   const totalApproved = stats?.totalApprovedAmount || 0;
   const deptBudget = user.department?.budget || 120000;
   const budgetUsagePercent = Math.min(Math.round((totalApproved / deptBudget) * 100), 100);
@@ -89,9 +123,9 @@ const HODDashboard = () => {
             />
             <DashboardCard
               title="Average Approval Time"
-              value="1.2 Days"
-              subtext="SLA Target: < 2 days"
-              icon={FiUsers}
+              value={getAverageApprovalTime()}
+              subtext="Real-time HOD action latency"
+              icon={FiClock}
               trendType="positive"
             />
           </>

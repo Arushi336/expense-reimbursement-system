@@ -5,6 +5,7 @@ import {
   FiGrid, FiPlusCircle, FiFileText, FiPieChart, 
   FiSliders, FiLogOut, FiActivity, FiUsers 
 } from 'react-icons/fi';
+import fluidLogo from '../../assets/fluid_logo_main.png';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
   const { user, logout } = useAuth();
@@ -23,14 +24,12 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         return [
           { name: 'Dashboard', path: '/employee', icon: FiGrid },
           { name: 'File New Claim', path: '/submit-expense', icon: FiPlusCircle },
-          ...common,
-          { name: 'Reports & Analytics', path: '/reports', icon: FiPieChart },
+          ...common
         ];
       case 'HOD':
         return [
           { name: 'Department Dashboard', path: '/hod', icon: FiGrid },
-          ...common,
-          { name: 'Spend Reports', path: '/reports', icon: FiPieChart },
+          ...common
         ];
       case 'Finance':
         return [
@@ -48,7 +47,6 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         return [
           { name: 'Admin Dashboard', path: '/admin', icon: FiGrid },
           ...common,
-          { name: 'Reports & Analytics', path: '/reports', icon: FiPieChart },
         ];
       default:
         return common;
@@ -80,15 +78,8 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
       >
         <div>
           {/* Logo Brand Header */}
-          <div className="h-16 border-b border-slate-100 flex items-center px-6 bg-slate-50/50">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-corporate-700 to-corporate-500 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                E
-              </div>
-              <span className="font-bold text-slate-800 text-lg tracking-tight font-display">
-                ERS <span className="text-corporate-600 font-normal">Enterprise</span>
-              </span>
-            </div>
+          <div className="h-16 border-b border-slate-100 flex items-center px-6 bg-white">
+            <img src={fluidLogo} alt="Fluid Controls Logo" className="h-7 w-auto object-contain" />
           </div>
 
           {/* Navigation Links */}

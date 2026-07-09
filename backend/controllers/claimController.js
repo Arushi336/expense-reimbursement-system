@@ -5,37 +5,7 @@ import Payment from '../models/Payment.js';
 import User from '../models/User.js';
 import Department from '../models/Department.js';
 import computeHash from '../utils/fileHasher.js';
-
-// Helper to check policy violations
-const runPolicyAudit = async (amount, categoryId, fileAttached, receiptHash) => {
-  const category = await ExpenseCategory.findById(categoryId);
-  if (!category) return { violated: false, message: '' };
-
-  const violations = [];
-
-  // Check category limit
-  if (amount > category.maxLimit) {
-    violations.push(`${category.name} limit exceeded ($${category.maxLimit} cap)`);
-  }
-
-  // Check if receipt required
-  if (category.receiptRequired && !fileAttached) {
-    violations.push('Receipt document is required for this expense category');
-  }
-
-  // Check duplicate hash
-  if (receiptHash) {
-    const existing = await ExpenseClaim.findOne({ receiptHash });
-    if (existing) {
-      violations.push(`Duplicate receipt detected (already uploaded in claim ${existing.id})`);
-    }
-  }
-
-  return {
-    violated: violations.length > 0,
-    message: violations.join('; ')
-  };
-};
+import { runPolicyAudit, withdrawClaim } from '../services/claimService.js';
 
 // @desc    Create / Submit claim
 // @route   POST /api/claims
@@ -52,7 +22,7 @@ export const createClaim = async (req, res, next) => {
 
     // Handle receipt file upload
     if (req.file) {
-      receiptUrl = req.file.path; // Multer path or Cloudinary secure URL
+      receiptUrl = req.file.filename; // Multer filename or Cloudinary secure URL
       receiptPublicId = req.file.filename || ''; // Cloudinary public ID
       receiptHash = computeHash(req.file);
     }
@@ -242,7 +212,7 @@ export const updateClaim = async (req, res, next) => {
     let receiptHash = claim.receiptHash;
 
     if (req.file) {
-      receiptUrl = req.file.path;
+      receiptUrl = req.file.filename;
       receiptPublicId = req.file.filename || '';
       receiptHash = computeHash(req.file);
     }
@@ -327,5 +297,17 @@ export const deleteClaim = async (req, res, next) => {
     res.status(200).json({ success: true, message: 'Draft deleted successfully' });
   } catch (error) {
     next(error);
+  }
+};
+
+// @desc    Withdraw claim
+// @route   POST /api/claims/:id/withdraw
+// @access  Private (Employee)
+export const withdrawClaimController = async (req, res, next) => {
+  try {
+    const claim = await withdrawClaim(req.params.id, req.user._id, req.ip);
+    res.status(200).json({ success: true, message: 'Claim successfully withdrawn.', data: claim });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
   }
 };

@@ -18,7 +18,7 @@ const approvalHistorySchema = new mongoose.Schema({
   },
   action: {
     type: String,
-    enum: ['Submit', 'Approve', 'Reject', 'Return for Correction', 'Query'],
+    enum: ['Submit', 'Approve', 'Reject', 'Return for Correction', 'Query', 'Withdraw'],
     required: true
   },
   remarks: {

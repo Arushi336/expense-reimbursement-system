@@ -71,7 +71,7 @@ const Navbar = ({ toggleSidebar }) => {
           <FiMenu size={20} />
         </button>
         <div>
-          <h2 className="text-sm font-semibold text-slate-800 leading-none">Enterprise Expense System</h2>
+          <h2 className="text-sm font-bold text-slate-800 leading-none">Fluid Controls Pvt. Ltd.</h2>
           <p className="text-[10px] text-slate-500 font-semibold uppercase mt-0.5 tracking-wider hidden sm:block">
             Portal &bull; {user.department?.name || 'Unassigned Department'}
           </p>
@@ -114,6 +114,7 @@ const Navbar = ({ toggleSidebar }) => {
             <option value="Admin">Simulate: Admin</option>
           </select>
         </div>
+
 
         {/* Notification Bell with Dropdown */}
         <div className="relative">

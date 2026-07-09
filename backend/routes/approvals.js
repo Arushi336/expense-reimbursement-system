@@ -39,6 +39,6 @@ const router = express.Router();
  *       200:
  *         description: Action processed successfully
  */
-router.post('/:claimId', protect, authorizeRoles('HOD', 'Finance'), validateBody(approvalActionSchema), processApproval);
+router.post('/:claimId', protect, authorizeRoles('HOD', 'Finance', 'Accounts'), validateBody(approvalActionSchema), processApproval);
 
 export default router;
