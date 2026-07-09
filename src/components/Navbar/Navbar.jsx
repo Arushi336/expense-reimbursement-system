@@ -7,7 +7,6 @@ import { useNavigate } from 'react-router-dom';
 const Navbar = ({ toggleSidebar }) => {
   const { user, switchRole, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [showSimulator, setShowSimulator] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const navigate = useNavigate();
@@ -34,15 +33,7 @@ const Navbar = ({ toggleSidebar }) => {
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  const handleRoleSwitch = async (role) => {
-    await switchRole(role.toLowerCase());
-    // Direct navigate to corresponding dashboard
-    if (role === 'Employee') navigate('/employee');
-    else if (role === 'HOD') navigate('/hod');
-    else if (role === 'Finance') navigate('/finance');
-    else if (role === 'Accounts') navigate('/accounts');
-    else if (role === 'Admin') navigate('/admin');
-  };
+
 
   const handleMarkAsRead = async (notifId) => {
     try {
@@ -80,40 +71,7 @@ const Navbar = ({ toggleSidebar }) => {
 
       {/* Simulator + Action Tray */}
       <div className="flex items-center gap-3 md:gap-5">
-        {/* Quick Simulator (Direct Role Switchers) */}
-        {showSimulator && (
-          <div className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
-            <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Simulate:</span>
-            {['Employee', 'HOD', 'Finance', 'Accounts', 'Admin'].map((r) => (
-              <button
-                key={r}
-                onClick={() => handleRoleSwitch(r)}
-                className={`px-2.5 py-1 text-xs font-semibold rounded transition ${
-                  user.role === r 
-                    ? 'bg-corporate-600 text-white shadow-sm' 
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        )}
 
-        {/* Small screen simulator selector */}
-        <div className="md:hidden">
-          <select
-            value={user.role}
-            onChange={(e) => handleRoleSwitch(e.target.value)}
-            className="text-xs font-semibold bg-slate-100 border border-slate-200 rounded-lg py-1 px-1.5 focus:outline-none focus:ring-1 focus:ring-corporate-500 text-slate-700"
-          >
-            <option value="Employee">Simulate: Employee</option>
-            <option value="HOD">Simulate: HOD</option>
-            <option value="Finance">Simulate: Finance</option>
-            <option value="Accounts">Simulate: Accounts</option>
-            <option value="Admin">Simulate: Admin</option>
-          </select>
-        </div>
 
 
         {/* Notification Bell with Dropdown */}
@@ -193,12 +151,6 @@ const Navbar = ({ toggleSidebar }) => {
                   <p className="font-semibold text-slate-800 truncate">{user.email}</p>
                 </div>
                 <div className="py-1 text-slate-700 font-semibold">
-                  <button 
-                    onClick={() => { setShowSimulator(!showSimulator); setDropdownOpen(false); }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center gap-2"
-                  >
-                    <FiShield size={15} /> Toggle Quick-Simulator
-                  </button>
                   <button 
                     onClick={handleLogout}
                     className="w-full text-left px-4 py-2.5 hover:bg-rose-50 text-rose-600 flex items-center gap-2"
