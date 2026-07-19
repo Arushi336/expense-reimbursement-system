@@ -68,6 +68,7 @@ const Reports = () => {
 
   // Loaded Data
   const [reportData, setReportData] = useState(null);
+  const [approvalTimeData, setApprovalTimeData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
 
@@ -104,9 +105,17 @@ const Reports = () => {
       if (maxAmount) params.maxAmount = maxAmount;
       if (searchVal) params.search = searchVal;
 
-      const res = await api.get('/reports/comprehensive', { params });
+      const [res, approvalRes] = await Promise.all([
+        api.get('/reports/comprehensive', { params }),
+        api.get('/reports/approval-time', { params })
+      ]);
+
       if (res.data.success) {
         setReportData(res.data.data);
+      }
+
+      if (approvalRes.data.success) {
+        setApprovalTimeData(approvalRes.data.data);
       }
     } catch (err) {
       console.error('Error fetching comprehensive reports:', err.message);
@@ -888,14 +897,7 @@ const Reports = () => {
                   <span className="text-xs font-bold text-slate-700 block mb-4">Historical Audit Durations Trends</span>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={[
-                        { name: 'Jan', HOD: 0.5, Finance: 0.9, Accounts: 0.2 },
-                        { name: 'Feb', HOD: 0.7, Finance: 1.1, Accounts: 0.3 },
-                        { name: 'Mar', HOD: 0.6, Finance: 0.8, Accounts: 0.2 },
-                        { name: 'Apr', HOD: 0.8, Finance: 1.2, Accounts: 0.4 },
-                        { name: 'May', HOD: 0.5, Finance: 0.9, Accounts: 0.3 },
-                        { name: 'Jun', HOD: 0.6, Finance: 0.9, Accounts: 0.3 }
-                      ]}>
+                      <LineChart data={approvalTimeData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" tick={{ fontSize: 9 }} />
                         <YAxis tick={{ fontSize: 9 }} />

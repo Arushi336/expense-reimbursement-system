@@ -12,6 +12,7 @@ import xss from 'xss-clean';
 
 import connectDB from './config/db.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
+import { ensureBootstrapData } from './scripts/bootstrapDefaults.js';
 
 // Route Imports
 import authRoutes from './routes/auth.js';
@@ -25,12 +26,6 @@ import reportsRoutes from './routes/reports.js';
 // ES Module dirname workaround
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Load env vars
-dotenv.config();
-
-// Connect to Database
-connectDB();
 
 const app = express();
 
@@ -119,7 +114,18 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-  console.log(`API Documentation available at http://localhost:${PORT}/api-docs`);
-});
+const startServer = async () => {
+  // Load env vars
+  dotenv.config();
+
+  // Connect to Database
+  await connectDB();
+  await ensureBootstrapData();
+
+  app.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+    console.log(`API Documentation available at http://localhost:${PORT}/api-docs`);
+  });
+};
+
+startServer();
