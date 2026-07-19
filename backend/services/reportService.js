@@ -3,7 +3,142 @@ import User from '../models/User.js';
 import Department from '../models/Department.js';
 import ExpenseCategory from '../models/ExpenseCategory.js';
 import Payment from '../models/Payment.js';
+import ApprovalHistory from '../models/ApprovalHistory.js';
 import mongoose from 'mongoose';
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const average = (values) => {
+  const numericValues = values.filter((value) => Number.isFinite(value));
+  if (numericValues.length === 0) {
+    return 0;
+  }
+
+  const total = numericValues.reduce((sum, value) => sum + value, 0);
+  return Number((total / numericValues.length).toFixed(1));
+};
+
+const toDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const durationInDays = (start, end) => {
+  const startDate = toDate(start);
+  const endDate = toDate(end);
+
+  if (!startDate || !endDate || endDate < startDate) {
+    return null;
+  }
+
+  return (endDate.getTime() - startDate.getTime()) / MS_PER_DAY;
+};
+
+const firstHistoryAfter = (entries, role, afterDate) => entries.find((entry) => {
+  if (entry.role !== role) {
+    return false;
+  }
+
+  const timestamp = toDate(entry.timestamp);
+  return timestamp && timestamp >= afterDate;
+});
+
+export const calculateApprovalMetrics = async (claims) => {
+  if (!claims || claims.length === 0) {
+    return {
+      approvalPerformance: {
+        averageApprovalTime: 0,
+        hodApprovalTime: 0,
+        financeApprovalTime: 0,
+        accountsSettlementTime: 0
+      },
+      monthlyApprovalTrends: MONTHS.map((name) => ({ name, HOD: 0, Finance: 0, Accounts: 0 }))
+    };
+  }
+
+  const claimIds = claims.map((claim) => claim._id);
+  const histories = await ApprovalHistory.find({ claimId: { $in: claimIds } }).sort({ timestamp: 1 });
+
+  const historiesByClaim = new Map();
+  histories.forEach((history) => {
+    const key = history.claimId.toString();
+    if (!historiesByClaim.has(key)) {
+      historiesByClaim.set(key, []);
+    }
+    historiesByClaim.get(key).push(history);
+  });
+
+  const hodDurations = [];
+  const financeDurations = [];
+  const accountsDurations = [];
+  const cycleDurations = [];
+  const monthlyBuckets = MONTHS.map(() => ({ HOD: [], Finance: [], Accounts: [] }));
+
+  claims.forEach((claim) => {
+    const claimHistories = historiesByClaim.get(claim._id.toString()) || [];
+    if (claimHistories.length === 0) {
+      return;
+    }
+
+    const orderedHistories = [...claimHistories].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const submittedEntry = orderedHistories.find((entry) => entry.action === 'Submit');
+    const submittedAt = toDate(submittedEntry?.timestamp || claim.createdAt || claim.date);
+
+    if (!submittedAt) {
+      return;
+    }
+
+    const hodEntry = firstHistoryAfter(orderedHistories, 'HOD', submittedAt);
+    const financeEntry = hodEntry ? firstHistoryAfter(orderedHistories, 'Finance', toDate(hodEntry.timestamp)) : null;
+    const accountsEntry = financeEntry ? firstHistoryAfter(orderedHistories, 'Accounts', toDate(financeEntry.timestamp)) : null;
+
+    const monthIndex = submittedAt.getMonth();
+
+    const hodDuration = hodEntry ? durationInDays(submittedAt, hodEntry.timestamp) : null;
+    const financeDuration = hodEntry && financeEntry ? durationInDays(hodEntry.timestamp, financeEntry.timestamp) : null;
+    const accountsDuration = financeEntry && accountsEntry ? durationInDays(financeEntry.timestamp, accountsEntry.timestamp) : null;
+    const cycleDuration = accountsEntry ? durationInDays(submittedAt, accountsEntry.timestamp) : null;
+
+    if (hodDuration !== null) {
+      hodDurations.push(hodDuration);
+      monthlyBuckets[monthIndex].HOD.push(hodDuration);
+    }
+
+    if (financeDuration !== null) {
+      financeDurations.push(financeDuration);
+      monthlyBuckets[monthIndex].Finance.push(financeDuration);
+    }
+
+    if (accountsDuration !== null) {
+      accountsDurations.push(accountsDuration);
+      monthlyBuckets[monthIndex].Accounts.push(accountsDuration);
+    }
+
+    if (cycleDuration !== null) {
+      cycleDurations.push(cycleDuration);
+    }
+  });
+
+  return {
+    approvalPerformance: {
+      averageApprovalTime: average(cycleDurations),
+      hodApprovalTime: average(hodDurations),
+      financeApprovalTime: average(financeDurations),
+      accountsSettlementTime: average(accountsDurations)
+    },
+    monthlyApprovalTrends: MONTHS.map((name, index) => ({
+      name,
+      HOD: average(monthlyBuckets[index].HOD),
+      Finance: average(monthlyBuckets[index].Finance),
+      Accounts: average(monthlyBuckets[index].Accounts)
+    }))
+  };
+};
 
 export const generateComprehensiveAnalytics = async (queryParams, currentUser) => {
   const { startDate, endDate, departmentId, employeeId, categoryId, status, minAmount, maxAmount, search } = queryParams;
@@ -250,6 +385,8 @@ export const generateComprehensiveAnalytics = async (queryParams, currentUser) =
     };
   });
 
+  const { approvalPerformance } = await calculateApprovalMetrics(claims);
+
   // Budget Utilization
   const budgetUtilization = allDepartments.map(dept => {
     const deptClaims = claims.filter(c => c.department && c.department._id.toString() === dept._id.toString());
@@ -305,7 +442,7 @@ export const generateComprehensiveAnalytics = async (queryParams, currentUser) =
       rejectedCount: rejectedClaims.length,
       totalEmployees: totalEmployeesCount,
       avgClaimAmount,
-      avgApprovalTime: 1.8,
+      avgApprovalTime: approvalPerformance.averageApprovalTime,
       highestSpendingDept,
       mostUsedCategory
     },
@@ -316,12 +453,7 @@ export const generateComprehensiveAnalytics = async (queryParams, currentUser) =
     employeeReports,
     categoryReports,
     budgetUtilization,
-    approvalPerformance: {
-      averageApprovalTime: 1.8,
-      hodApprovalTime: 0.6,
-      financeApprovalTime: 0.9,
-      accountsSettlementTime: 0.3
-    },
+    approvalPerformance,
     payments: paymentsFormatted
   };
 };

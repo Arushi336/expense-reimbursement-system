@@ -38,14 +38,6 @@ export const createClaim = async (req, res, next) => {
     const status = isDraft === 'true' || isDraft === true ? 'Draft' : 'Submitted';
     const currentStep = status === 'Draft' ? 'Draft' : 'HOD';
 
-    // Mock OCR details to simulate AI receipt scanner
-    const ocrData = req.file ? {
-      ocrAmount: Number(amount),
-      ocrVendor: merchant,
-      ocrDate: new Date(date),
-      ocrConfidence: Math.floor(Math.random() * (99 - 88 + 1) + 88)
-    } : {};
-
     // Parse items if provided
     let claimItems = [];
     if (items) {
@@ -73,8 +65,7 @@ export const createClaim = async (req, res, next) => {
       currentStep,
       policyViolation: audit.violated,
       policyMessage: audit.message,
-      items: claimItems,
-      ...ocrData
+      items: claimItems
     });
 
     // Create Approval History action log
@@ -232,14 +223,6 @@ export const updateClaim = async (req, res, next) => {
       }
     }
 
-    // OCR data
-    const ocrData = req.file ? {
-      ocrAmount: Number(amount),
-      ocrVendor: merchant,
-      ocrDate: new Date(date),
-      ocrConfidence: Math.floor(Math.random() * (99 - 88 + 1) + 88)
-    } : {};
-
     claim = await ExpenseClaim.findByIdAndUpdate(req.params.id, {
       title: title || claim.title,
       category: categoryId || claim.category,
@@ -254,8 +237,7 @@ export const updateClaim = async (req, res, next) => {
       currentStep,
       policyViolation: audit.violated,
       policyMessage: audit.message,
-      items: claimItems,
-      ...ocrData
+      items: claimItems
     }, { new: true });
 
     // History Log

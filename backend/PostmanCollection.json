@@ -21,7 +21,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"Sarah Jenkins\",\n  \"email\": \"sarah.jenkins@corporate.com\",\n  \"password\": \"password123\",\n  \"role\": \"Employee\",\n  \"allottedBudget\": 15000\n}"
+							"raw": "{\n  \"name\": \"Arjun Sharma\",\n  \"email\": \"arjun.sharma@company.com\",\n  \"password\": \"password123\",\n  \"role\": \"Employee\",\n  \"allottedBudget\": 15000\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/register",
@@ -63,7 +63,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"sarah.jenkins@corporate.com\",\n  \"password\": \"password123\"\n}"
+							"raw": "{\n  \"email\": \"arjun.sharma@company.com\",\n  \"password\": \"password123\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -105,7 +105,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"marcus.brody@corporate.com\",\n  \"password\": \"password123\"\n}"
+							"raw": "{\n  \"email\": \"rajesh.deshmukh@company.com\",\n  \"password\": \"password123\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -147,7 +147,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"linda.vance@corporate.com\",\n  \"password\": \"password123\"\n}"
+							"raw": "{\n  \"email\": \"vivek.kulkarni@company.com\",\n  \"password\": \"password123\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",
@@ -189,7 +189,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"gary.cooper@corporate.com\",\n  \"password\": \"password123\"\n}"
+							"raw": "{\n  \"email\": \"suresh.iyer@company.com\",\n  \"password\": \"password123\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/auth/login",

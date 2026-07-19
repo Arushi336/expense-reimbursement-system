@@ -3,7 +3,7 @@ import User from '../models/User.js';
 import Department from '../models/Department.js';
 import ApprovalHistory from '../models/ApprovalHistory.js';
 import mongoose from 'mongoose';
-import { generateComprehensiveAnalytics } from '../services/reportService.js';
+import { calculateApprovalMetrics, generateComprehensiveAnalytics } from '../services/reportService.js';
 
 // @desc    Get dashboard card stats based on user role
 // @route   GET /api/reports/dashboard
@@ -248,16 +248,41 @@ export const getDepartmentSpend = async (req, res, next) => {
 export const getApprovalTimeStats = async (req, res, next) => {
   try {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const sampleData = months.map((month, index) => {
-      const seedVal = (index % 3) * 0.3;
-      return {
-        name: month,
-        HOD: Number((0.8 + seedVal).toFixed(1)),
-        Finance: Number((1.2 + seedVal * 0.7).toFixed(1))
-      };
-    });
 
-    res.status(200).json({ success: true, data: sampleData });
+    const { startDate, endDate, departmentId, employeeId, categoryId, status } = req.query;
+    const matchQuery = {};
+
+    if (req.user.role === 'Employee') {
+      matchQuery.employee = req.user._id;
+    } else if (req.user.role === 'HOD') {
+      matchQuery.department = req.user.department ? (req.user.department._id || req.user.department) : null;
+      matchQuery.status = { $ne: 'Draft' };
+    } else if (req.user.role !== 'Admin') {
+      matchQuery.status = { $ne: 'Draft' };
+    }
+
+    if (employeeId && employeeId !== 'ALL' && req.user.role !== 'Employee') {
+      matchQuery.employee = employeeId;
+    }
+    if (departmentId && departmentId !== 'ALL' && req.user.role !== 'HOD') {
+      matchQuery.department = departmentId;
+    }
+    if (categoryId && categoryId !== 'ALL') {
+      matchQuery.category = categoryId;
+    }
+    if (status && status !== 'ALL') {
+      matchQuery.status = status;
+    }
+    if (startDate || endDate) {
+      matchQuery.date = {};
+      if (startDate) matchQuery.date.$gte = new Date(startDate);
+      if (endDate) matchQuery.date.$lte = new Date(endDate);
+    }
+
+    const claims = await ExpenseClaim.find(matchQuery);
+    const { monthlyApprovalTrends } = await calculateApprovalMetrics(claims);
+
+    res.status(200).json({ success: true, data: monthlyApprovalTrends });
   } catch (error) {
     next(error);
   }
