@@ -2,20 +2,20 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import User from '../models/User.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretenterpriseexpensereimbursementsystemkey2026';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'supersecretrefreshkey2026';
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const getJwtSecret = () => process.env.JWT_SECRET || 'supersecretenterpriseexpensereimbursementsystemkey2026';
+const getJwtExpiresIn = () => process.env.JWT_EXPIRES_IN || '7d';
+const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'supersecretrefreshkey2026';
+const getJwtRefreshExpiresIn = () => process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
 export const generateAccessToken = (userId) => {
-  return jwt.sign({ id: userId }, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN
+  return jwt.sign({ id: userId }, getJwtSecret(), {
+    expiresIn: getJwtExpiresIn()
   });
 };
 
 export const generateRefreshToken = (userId) => {
-  return jwt.sign({ id: userId }, JWT_REFRESH_SECRET, {
-    expiresIn: JWT_REFRESH_EXPIRES_IN
+  return jwt.sign({ id: userId }, getJwtRefreshSecret(), {
+    expiresIn: getJwtRefreshExpiresIn()
   });
 };
 
@@ -27,7 +27,7 @@ export const storeRefreshToken = async (userId, token) => {
 
 export const verifyRefreshToken = async (token) => {
   try {
-    const decoded = jwt.verify(token, JWT_REFRESH_SECRET);
+    const decoded = jwt.verify(token, getJwtRefreshSecret());
     const user = await User.findById(decoded.id).select('+password').populate('department');
     if (!user || !user.refreshTokens.includes(token)) {
       return null;

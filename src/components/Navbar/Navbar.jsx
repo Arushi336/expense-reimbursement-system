@@ -131,9 +131,10 @@ const Navbar = ({ toggleSidebar }) => {
             className="flex items-center gap-2 hover:bg-slate-50 p-1.5 rounded-lg border border-slate-100 transition"
           >
             <img 
-              src={user.avatar} 
+              src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0D6EFD&color=fff&size=64`} 
               alt={user.name} 
               className="w-7 h-7 rounded-lg object-cover bg-slate-100 border border-slate-200"
+              onError={(e) => { e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=0D6EFD&color=fff&size=64`; }}
             />
             <div className="text-left hidden sm:block">
               <div className="text-xs font-bold text-slate-800 leading-none">{user.name}</div>

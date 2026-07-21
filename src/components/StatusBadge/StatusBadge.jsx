@@ -9,11 +9,16 @@ const StatusBadge = ({ status }) => {
         return 'bg-purple-50 text-purple-700 border-purple-200';
       case 'Pending Finance':
         return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'Pending HOD':
-        return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'Submitted':
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Returned for Correction':
+        return 'bg-sky-50 text-sky-700 border-sky-200';
       case 'Queried':
         return 'bg-sky-50 text-sky-700 border-sky-200';
       case 'Rejected':
+      case 'Rejected by HOD':
+      case 'Rejected by Finance':
+      case 'Rejected by Accounts':
         return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'Draft':
       default:

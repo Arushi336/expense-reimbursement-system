@@ -5,7 +5,7 @@ import ExpenseTable from '../../components/Tables/ExpenseTable';
 
 const ExpenseHistory = () => {
   const { user } = useAuth();
-  const { expenses, fetchExpenses, loading } = useExpenses();
+  const { expenses, fetchExpenses, loading, executeApproval } = useExpenses();
 
   useEffect(() => {
     // Fetch claims on page load

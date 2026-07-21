@@ -78,6 +78,9 @@ export const loginUser = async (req, res, next) => {
       email: user.email,
       role: user.role,
       department: user.department,
+      allottedBudget: user.allottedBudget,
+      employeeId: user.employeeId,
+      phoneNumber: user.phoneNumber,
       token: accessToken,
       refreshToken: refreshToken
     });
