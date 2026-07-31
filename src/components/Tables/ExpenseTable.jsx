@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import StatusBadge from '../StatusBadge/StatusBadge';
 import api from '../../services/api';
+import { CLAIM_STATUS } from '../../constants/statusConstants';
 import { 
-  FiSearch, FiFilter, FiEye, FiCheck, FiX, FiHelpCircle, 
+  FiSearch, FiEye, FiCheck, FiX, FiHelpCircle, 
   FiCalendar, FiUser, FiTag, FiFileText, FiDownload,
-  FiArrowUp, FiArrowDown, FiActivity, FiBriefcase, FiDollarSign
+  FiArrowUp, FiArrowDown, FiBriefcase, FiDollarSign
 } from 'react-icons/fi';
 
 const ExpenseTable = ({ expenses, onAction, userRole }) => {
@@ -33,7 +34,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
   // Fetch Full Claim Details on demand
   const handleViewDetails = async (claim) => {
     setModalLoading(true);
-    setSelectedExpense(claim); // temporary placement
+    setSelectedExpense(claim);
     try {
       const res = await api.get(`/claims/${claim._id}`);
       if (res.data.success) {
@@ -59,7 +60,6 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
       merchantVal.toLowerCase().includes(searchTerm.toLowerCase()) ||
       idVal.toLowerCase().includes(searchTerm.toLowerCase());
     
-    // Category match is checked by code
     const matchesCategory = categoryFilter === 'ALL' || exp.category?.code === categoryFilter;
     const matchesStatus = statusFilter === 'ALL' || exp.status === statusFilter;
 
@@ -93,20 +93,21 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
 
   const getWorkflowStep = (status) => {
     switch (status) {
-      case 'Draft':
-      case 'Returned for Correction':
+      case CLAIM_STATUS.DRAFT:
+      case CLAIM_STATUS.RETURNED_FOR_CORRECTION:
         return 0;
-      case 'Submitted':
+      case CLAIM_STATUS.SUBMITTED:
         return 1;
-      case 'Pending Finance':
+      case CLAIM_STATUS.PENDING_FINANCE:
         return 2;
-      case 'Pending Settlement':
+      case CLAIM_STATUS.PENDING_SETTLEMENT:
         return 3;
-      case 'Approved & Settled':
+      case CLAIM_STATUS.APPROVED_SETTLED:
         return 4;
-      case 'Rejected by HOD':
-      case 'Rejected by Finance':
-      case 'Rejected':
+      case CLAIM_STATUS.REJECTED_BY_HOD:
+      case CLAIM_STATUS.REJECTED_BY_FINANCE:
+      case CLAIM_STATUS.REJECTED_BY_ACCOUNTS:
+      case CLAIM_STATUS.REJECTED:
         return -1;
       default:
         return 1;
@@ -123,21 +124,20 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
 
   // Role Action Checker
   const canActOnExpense = (status) => {
-    if (userRole === 'HOD' && status === 'Submitted') return true;
-    if (userRole === 'Finance' && status === 'Pending Finance') return true;
-    if (userRole === 'Accounts' && status === 'Pending Settlement') return true;
+    if (userRole === 'HOD' && status === CLAIM_STATUS.SUBMITTED) return true;
+    if (userRole === 'Finance' && (status === CLAIM_STATUS.PENDING_FINANCE || status === CLAIM_STATUS.SUBMITTED)) return true;
+    if (userRole === 'Accounts' && status === CLAIM_STATUS.PENDING_SETTLEMENT) return true;
+    if (userRole === 'Admin' && [CLAIM_STATUS.SUBMITTED, CLAIM_STATUS.PENDING_FINANCE, CLAIM_STATUS.PENDING_SETTLEMENT].includes(status)) return true;
     return false;
   };
 
   const executeAction = (expenseId, nextStatus) => {
-    // Require remarks for Reject or Return for Correction actions
-    if ((nextStatus === 'Rejected' || nextStatus === 'Returned for Correction') && !actionComment.trim()) {
+    if ((nextStatus === CLAIM_STATUS.REJECTED || nextStatus === CLAIM_STATUS.RETURNED_FOR_CORRECTION) && !actionComment.trim()) {
       alert(`Remarks/Notes are required to return or reject a claim. Please enter your comments in the Decision Remarks box.`);
       return;
     }
 
-    // Require confirmation for Reject
-    if (nextStatus === 'Rejected') {
+    if (nextStatus === CLAIM_STATUS.REJECTED) {
       const confirmReject = window.confirm("Are you sure you want to REJECT this expense claim? This will permanently cancel the approval process.");
       if (!confirmReject) return;
     }
@@ -151,33 +151,37 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
 
   const handleQuickAction = (exp) => {
     if (userRole === 'HOD') {
-      if (onAction) onAction(exp._id, 'Pending Finance', 'Quick approved via dashboard');
+      if (onAction) onAction(exp._id, CLAIM_STATUS.PENDING_FINANCE, 'Quick approved via dashboard');
     } else if (userRole === 'Finance') {
-      if (onAction) onAction(exp._id, 'Pending Settlement', 'Quick verified via dashboard');
+      const nextStatus = exp.status === CLAIM_STATUS.SUBMITTED ? CLAIM_STATUS.PENDING_FINANCE : CLAIM_STATUS.PENDING_SETTLEMENT;
+      if (onAction) onAction(exp._id, nextStatus, 'Quick verified via dashboard');
     } else if (userRole === 'Accounts') {
       const quickTxnId = `TXN-QK-${Math.floor(100000 + Math.random() * 900000)}`;
-      if (onAction) onAction(exp._id, 'Approved & Settled', quickTxnId);
+      if (onAction) onAction(exp._id, CLAIM_STATUS.APPROVED_SETTLED, quickTxnId);
+    } else if (userRole === 'Admin') {
+      const nextStatus = exp.status === CLAIM_STATUS.SUBMITTED ? CLAIM_STATUS.PENDING_FINANCE : exp.status === CLAIM_STATUS.PENDING_FINANCE ? CLAIM_STATUS.PENDING_SETTLEMENT : CLAIM_STATUS.APPROVED_SETTLED;
+      if (onAction) onAction(exp._id, nextStatus, 'Quick approved by Admin');
     }
   };
 
   const getActionButtons = (exp) => {
-    if (userRole === 'HOD') {
+    if (userRole === 'HOD' || (userRole === 'Admin' && exp.status === CLAIM_STATUS.SUBMITTED)) {
       return (
         <div className="flex gap-2">
           <button 
-            onClick={() => executeAction(exp._id, 'Pending Finance')}
+            onClick={() => executeAction(exp._id, CLAIM_STATUS.PENDING_FINANCE)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold shadow transition-colors"
           >
             <FiCheck size={14} /> Approve Claim
           </button>
           <button 
-            onClick={() => executeAction(exp._id, 'Returned for Correction')}
+            onClick={() => executeAction(exp._id, CLAIM_STATUS.RETURNED_FOR_CORRECTION)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold shadow transition-colors"
           >
             <FiHelpCircle size={14} /> Return for Correction
           </button>
           <button 
-            onClick={() => executeAction(exp._id, 'Rejected')}
+            onClick={() => executeAction(exp._id, CLAIM_STATUS.REJECTED)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold shadow transition-colors"
           >
             <FiX size={14} /> Reject
@@ -186,23 +190,23 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
       );
     }
 
-    if (userRole === 'Finance') {
+    if (userRole === 'Finance' || (userRole === 'Admin' && exp.status === CLAIM_STATUS.PENDING_FINANCE)) {
       return (
         <div className="flex gap-2">
           <button 
-            onClick={() => executeAction(exp._id, 'Pending Settlement')}
+            onClick={() => executeAction(exp._id, CLAIM_STATUS.PENDING_SETTLEMENT)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold shadow transition-colors"
           >
             <FiCheck size={14} /> Verify & Pass
           </button>
           <button 
-            onClick={() => executeAction(exp._id, 'Returned for Correction')}
+            onClick={() => executeAction(exp._id, CLAIM_STATUS.RETURNED_FOR_CORRECTION)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold shadow transition-colors"
           >
             <FiHelpCircle size={14} /> Return for Correction
           </button>
           <button 
-            onClick={() => executeAction(exp._id, 'Rejected')}
+            onClick={() => executeAction(exp._id, CLAIM_STATUS.REJECTED)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold shadow transition-colors"
           >
             <FiX size={14} /> Reject Audit
@@ -211,7 +215,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
       );
     }
 
-    if (userRole === 'Accounts') {
+    if (userRole === 'Accounts' || (userRole === 'Admin' && exp.status === CLAIM_STATUS.PENDING_SETTLEMENT)) {
       return (
         <div className="w-full space-y-4">
           <div className="bg-slate-100/60 p-3 rounded-xl border border-slate-200 space-y-2">
@@ -232,7 +236,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                   alert("Please enter a Bank Transaction ID to disburse payment.");
                   return;
                 }
-                if (onAction) onAction(exp._id, 'Approved & Settled', txnRef.trim());
+                if (onAction) onAction(exp._id, CLAIM_STATUS.APPROVED_SETTLED, txnRef.trim());
                 setTxnRef('');
                 setSelectedExpense(null);
               }}
@@ -241,13 +245,13 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
               <FiCheck size={14} /> Mark as Paid
             </button>
             <button 
-              onClick={() => executeAction(exp._id, 'Returned for Correction')}
+              onClick={() => executeAction(exp._id, CLAIM_STATUS.RETURNED_FOR_CORRECTION)}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-semibold shadow transition-colors"
             >
               <FiHelpCircle size={14} /> Return for Correction
             </button>
             <button 
-              onClick={() => executeAction(exp._id, 'Rejected')}
+              onClick={() => executeAction(exp._id, CLAIM_STATUS.REJECTED)}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold shadow transition-colors"
             >
               <FiX size={14} /> Reject Payment
@@ -266,10 +270,13 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
 
   const getReceiptSrc = (url) => {
     if (!url) return '';
-    if (url.startsWith('http')) return url;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
     const parts = url.split(/[\\/]/);
     const filename = parts[parts.length - 1];
-    return `http://localhost:5000/uploads/${filename}`;
+    const baseUrl = (import.meta.env?.VITE_API_BASE_URL 
+      ? import.meta.env.VITE_API_BASE_URL.replace(/\/api\/?$/, '') 
+      : 'http://localhost:5000');
+    return `${baseUrl}/uploads/${filename}`;
   };
 
   const handleExportCSV = () => {
@@ -326,14 +333,14 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-corporate-500"
           >
             <option value="ALL">All Statuses</option>
-            <option value="Draft">Draft</option>
-            <option value="Submitted">Submitted</option>
-            <option value="Pending Finance">Pending Finance</option>
-            <option value="Pending Settlement">Pending Settlement</option>
-            <option value="Approved & Settled">Approved & Settled</option>
-            <option value="Returned for Correction">Returned for Correction</option>
-            <option value="Rejected by HOD">Rejected by HOD</option>
-            <option value="Rejected by Finance">Rejected by Finance</option>
+            <option value={CLAIM_STATUS.DRAFT}>Draft</option>
+            <option value={CLAIM_STATUS.SUBMITTED}>Submitted</option>
+            <option value={CLAIM_STATUS.PENDING_FINANCE}>Pending Finance</option>
+            <option value={CLAIM_STATUS.PENDING_SETTLEMENT}>Pending Settlement</option>
+            <option value={CLAIM_STATUS.APPROVED_SETTLED}>Approved & Settled</option>
+            <option value={CLAIM_STATUS.RETURNED_FOR_CORRECTION}>Returned for Correction</option>
+            <option value={CLAIM_STATUS.REJECTED_BY_HOD}>Rejected by HOD</option>
+            <option value={CLAIM_STATUS.REJECTED_BY_FINANCE}>Rejected by Finance</option>
           </select>
 
           <button
@@ -373,9 +380,9 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                     <div className="text-xs text-slate-500">{exp.department?.name}</div>
                   </td>
                   <td className="py-4 px-5 text-right font-bold text-slate-900">
-                    ₹{exp.amount.toFixed(2)}
+                    ₹{(exp.amount || 0).toFixed(2)}
                   </td>
-                  <td className="py-4 px-5 text-slate-500">{new Date(exp.date).toLocaleDateString()}</td>
+                  <td className="py-4 px-5 text-slate-500">{exp.date ? new Date(exp.date).toLocaleDateString() : 'N/A'}</td>
                   <td className="py-4 px-5">
                     <StatusBadge status={exp.status} />
                   </td>
@@ -562,7 +569,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                       <div className="p-2 bg-slate-100 rounded text-slate-500"><FiCalendar size={16} /></div>
                       <div>
                         <span className="text-xs text-slate-500 block">Transaction Date</span>
-                        <span className="text-sm font-semibold text-slate-800">{new Date(selectedExpense.date).toLocaleDateString()}</span>
+                        <span className="text-sm font-semibold text-slate-800">{selectedExpense.date ? new Date(selectedExpense.date).toLocaleDateString() : 'N/A'}</span>
                       </div>
                     </div>
 
@@ -578,7 +585,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                       <div className="p-2 bg-corporate-50 rounded text-corporate-600 font-bold">₹</div>
                       <div>
                         <span className="text-xs text-slate-500 block">Reimbursement Amount</span>
-                        <span className="text-sm font-bold text-corporate-700">₹{selectedExpense.amount?.toFixed(2)}</span>
+                        <span className="text-sm font-bold text-corporate-700">₹{(selectedExpense.amount || 0).toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -594,7 +601,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                     <span className="text-xs text-slate-500 font-semibold block">Receipt Attachment Preview</span>
                     {selectedExpense.receiptUrl ? (
                       <div className="border border-slate-200 rounded-xl overflow-hidden p-2 bg-slate-50">
-                        {selectedExpense.receiptUrl.endsWith('.pdf') ? (
+                        {selectedExpense.receiptUrl.toLowerCase().includes('.pdf') ? (
                           <div className="flex items-center justify-between p-2">
                             <span className="text-xs text-slate-700 font-semibold flex items-center gap-2"><FiFileText className="text-corporate-600" /> PDF Document Receipt</span>
                             <a href={getReceiptSrc(selectedExpense.receiptUrl)} target="_blank" rel="noreferrer" className="text-xs font-bold text-corporate-600 hover:underline">Download PDF Document</a>
@@ -612,7 +619,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                               }}
                             />
                             <div className="receipt-error-msg hidden text-xs text-rose-600 font-semibold p-4 text-center border border-dashed border-rose-200 bg-rose-50/50 rounded-lg">
-                              Receipt file could not be loaded (it may have been deleted from local storage).
+                              Receipt file could not be loaded.
                             </div>
                             <a href={getReceiptSrc(selectedExpense.receiptUrl)} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-corporate-500 hover:underline text-center block">Open receipt image in new window</a>
                           </div>
@@ -644,7 +651,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                         </div>
                         <div>
                           <span>OCR Amount:</span>
-                          <strong className="text-slate-800 block text-xs mt-0.5">₹{selectedExpense.ocrAmount?.toFixed(2) || 'Not scanned'}</strong>
+                          <strong className="text-slate-800 block text-xs mt-0.5">₹{(selectedExpense.ocrAmount || 0).toFixed(2)}</strong>
                         </div>
                         <div>
                           <span>OCR Date:</span>
@@ -668,7 +675,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                           <div>
                             <div className="flex justify-between text-xs text-slate-500 font-semibold">
                               <span>{h.action} by <strong className="text-slate-800">{h.actionBy?.name || 'User'}</strong> ({h.role})</span>
-                              <span>{new Date(h.timestamp).toLocaleDateString()}</span>
+                              <span>{h.timestamp ? new Date(h.timestamp).toLocaleDateString() : 'N/A'}</span>
                             </div>
                             {h.remarks && <p className="text-xs text-slate-600 italic mt-0.5">&ldquo;{h.remarks}&rdquo;</p>}
                           </div>
@@ -678,7 +685,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                   </div>
 
                   {/* Payment information if Settled */}
-                  {selectedExpense.status === 'Approved & Settled' && selectedExpense.payment && (
+                  {selectedExpense.status === CLAIM_STATUS.APPROVED_SETTLED && selectedExpense.payment && (
                     <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-2">
                       <h4 className="text-xs font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5"><FiDollarSign /> Settlement Disbursement Info</h4>
                       <div className="grid grid-cols-2 gap-2 text-[10px] text-purple-800 font-medium">
@@ -688,7 +695,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                         </div>
                         <div>
                           <span>Disbursed On:</span>
-                          <strong className="text-purple-950 block">{new Date(selectedExpense.payment.paymentDate).toLocaleDateString()}</strong>
+                          <strong className="text-purple-950 block">{selectedExpense.payment.paymentDate ? new Date(selectedExpense.payment.paymentDate).toLocaleDateString() : 'N/A'}</strong>
                         </div>
                       </div>
                     </div>
@@ -701,7 +708,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
             {!modalLoading && (
               canActOnExpense(selectedExpense.status) ? (
                 <div className="p-5 border-t border-slate-150 bg-slate-50/95 flex flex-col gap-3 shrink-0">
-                  {['HOD', 'Finance', 'Accounts'].includes(userRole) && (
+                  {['HOD', 'Finance', 'Accounts', 'Admin'].includes(userRole) && (
                     <div className="w-full">
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Decision Remarks / Notes</label>
                       <textarea
@@ -718,7 +725,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                   </div>
                 </div>
               ) : (
-                ['HOD', 'Finance', 'Accounts'].includes(userRole) && (
+                ['HOD', 'Finance', 'Accounts', 'Admin'].includes(userRole) && (
                   <div className="p-5 border-t border-slate-150 bg-slate-100/90 text-slate-500 text-xs font-semibold text-center shrink-0">
                     This claim is currently in <span className="font-bold text-slate-700">{selectedExpense.status}</span> status and does not require action from your role ({userRole}).
                   </div>

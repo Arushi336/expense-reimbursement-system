@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useExpenses } from '../../hooks/useExpenses';
@@ -6,7 +6,7 @@ import api from '../../services/api';
 import DashboardCard from '../../components/DashboardCard/DashboardCard';
 import StatusBadge from '../../components/StatusBadge/StatusBadge';
 import { 
-  FiDollarSign, FiClock, FiAlertCircle, FiTrendingUp, 
+  FiDollarSign, FiClock, FiAlertCircle, 
   FiPlus, FiChevronRight, FiFileText, FiActivity, FiCheckCircle
 } from 'react-icons/fi';
 
@@ -18,38 +18,36 @@ const EmployeeDashboard = () => {
   const [activities, setActivities] = useState([]);
   const navigate = useNavigate();
 
+  const empId = user?._id;
+
+  const fetchStatsAndActivity = useCallback(async () => {
+    if (!empId) return;
+    fetchExpenses({ employee: empId });
+
+    try {
+      const [resStats, resAct] = await Promise.all([
+        api.get('/reports/dashboard'),
+        api.get('/notifications')
+      ]);
+
+      if (resStats.data.success) {
+        setStats(resStats.data.data);
+      }
+      if (resAct.data.success) {
+        setActivities(resAct.data.data.slice(0, 4));
+      }
+    } catch (err) {
+      console.error(err.message);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [empId, fetchExpenses]);
+
   useEffect(() => {
-    fetchExpenses({ employee: user._id });
-    
-    const fetchStats = async () => {
-      try {
-        const res = await api.get('/reports/dashboard');
-        if (res.data.success) {
-          setStats(res.data.data);
-        }
-      } catch (err) {
-        console.error(err.message);
-      } finally {
-        setStatsLoading(false);
-      }
-    };
+    fetchStatsAndActivity();
+  }, [fetchStatsAndActivity]);
 
-    const fetchActivity = async () => {
-      try {
-        const res = await api.get('/notifications');
-        if (res.data.success) {
-          setActivities(res.data.data.slice(0, 4));
-        }
-      } catch (err) {
-        console.error(err.message);
-      }
-    };
-
-    fetchStats();
-    fetchActivity();
-  }, [user, fetchExpenses]);
-
-  const budgetAllotted = user.allottedBudget || 15000;
+  const budgetAllotted = user?.allottedBudget || 15000;
   const totalReimbursed = stats?.totalReimbursed || 0;
   const budgetPercentage = Math.min(Math.round((totalReimbursed / budgetAllotted) * 100), 100);
 
@@ -60,7 +58,7 @@ const EmployeeDashboard = () => {
         <div className="absolute top-0 right-0 w-80 h-80 bg-corporate-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-10 left-10 w-40 h-40 bg-corporate-600/10 rounded-full blur-2xl pointer-events-none" />
         <div className="relative z-10">
-          <h1 className="text-2xl font-bold tracking-tight">Welcome Back, {user.name}!</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Welcome Back, {user?.name || 'Employee'}!</h1>
           <p className="text-sm text-slate-300 mt-1">Submit new claims, review approval status, and manage department quotas.</p>
         </div>
         <button
@@ -164,8 +162,8 @@ const EmployeeDashboard = () => {
                           {exp.title}
                           <span className="block text-[10px] text-slate-400 font-normal">{exp.category?.name} &bull; {exp.merchant}</span>
                         </td>
-                        <td className="py-3 text-right font-bold text-slate-800">₹{exp.amount.toFixed(2)}</td>
-                        <td className="py-3 text-slate-500 text-xs">{new Date(exp.date).toLocaleDateString()}</td>
+                        <td className="py-3 text-right font-bold text-slate-800">₹{(exp.amount || 0).toFixed(2)}</td>
+                        <td className="py-3 text-slate-500 text-xs">{exp.date ? new Date(exp.date).toLocaleDateString() : 'N/A'}</td>
                         <td className="py-3 text-right">
                           <StatusBadge status={exp.status} />
                         </td>
@@ -226,7 +224,7 @@ const EmployeeDashboard = () => {
                     <span className="w-1.5 h-1.5 rounded-full bg-corporate-500 mt-1.5 shrink-0"></span>
                     <div className="text-xs leading-relaxed text-slate-700">
                       <p>{act.message}</p>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">{new Date(act.createdAt).toLocaleDateString()}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{act.createdAt ? new Date(act.createdAt).toLocaleDateString() : ''}</span>
                     </div>
                   </div>
                 ))

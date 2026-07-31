@@ -1,4 +1,4 @@
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import ExpenseClaim from '../models/ExpenseClaim.js';
 import User from '../models/User.js';
 import Department from '../models/Department.js';
@@ -27,7 +27,16 @@ const gatherReportData = async (req) => {
     matchQuery.department = new mongoose.Types.ObjectId(departmentId);
   }
   if (employeeId && req.user.role !== 'Employee') {
-    matchQuery.employee = new mongoose.Types.ObjectId(employeeId);
+    if (mongoose.Types.ObjectId.isValid(employeeId)) {
+      const empUser = await User.findOne({ _id: employeeId, role: 'Employee' });
+      if (empUser) {
+        matchQuery.employee = empUser._id;
+      } else {
+        matchQuery.employee = new mongoose.Types.ObjectId('000000000000000000000000');
+      }
+    } else {
+      matchQuery.employee = new mongoose.Types.ObjectId('000000000000000000000000');
+    }
   }
   if (categoryId) {
     matchQuery.category = new mongoose.Types.ObjectId(categoryId);
@@ -71,7 +80,7 @@ const gatherReportData = async (req) => {
   }
 
   const allDepartments = await Department.find();
-  const allUsers = await User.find({ role: { $ne: 'Admin' } }).populate('department', 'name');
+  const allUsers = await User.find({ role: 'Employee' }).populate('department', 'name');
 
   const totalAmountSum = claims.reduce((sum, c) => sum + c.amount, 0);
   const approvedClaims = claims.filter(c => c.status === 'Approved & Settled');
@@ -165,12 +174,22 @@ const gatherReportData = async (req) => {
   };
 };
 
+// Helper to add sheet with headers and data rows to ExcelJS workbook
+const addSheetToWorkbook = (wb, sheetName, headers, dataRows) => {
+  const ws = wb.addWorksheet(sheetName);
+  ws.columns = headers.map(h => ({ header: h, key: h }));
+  if (dataRows && dataRows.length > 0) {
+    ws.addRows(dataRows);
+  }
+  return ws;
+};
+
 // 1. EXPORT EXCEL REPORT
 export const exportExcelReport = async (req, res, next) => {
   try {
     const data = await gatherReportData(req);
 
-    const wb = XLSX.book_new();
+    const wb = new ExcelJS.Workbook();
 
     // Sheet 1: Dashboard Summary
     const summaryData = [
@@ -184,8 +203,7 @@ export const exportExcelReport = async (req, res, next) => {
       { Metric: 'Highest Spending Department', Value: data.summary.highestSpendingDept },
       { Metric: 'Most Utilized Expense Category', Value: data.summary.mostUsedCategory },
     ];
-    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-    XLSX.book_append_sheet(wb, wsSummary, 'Dashboard Summary');
+    addSheetToWorkbook(wb, 'Dashboard Summary', ['Metric', 'Value'], summaryData);
 
     // Sheet 2: Employee Report
     const employeeData = data.allUsers.map(u => {
@@ -203,8 +221,7 @@ export const exportExcelReport = async (req, res, next) => {
         'Rejected Amount (INR)': empClaims.filter(c => c.status.startsWith('Rejected')).reduce((sum, c) => sum + c.amount, 0)
       };
     });
-    const wsEmployee = XLSX.utils.json_to_sheet(employeeData);
-    XLSX.book_append_sheet(wb, wsEmployee, 'Employee Report');
+    addSheetToWorkbook(wb, 'Employee Report', ['Employee ID', 'Employee Name', 'Email Address', 'Phone Number', 'Department', 'Total Claims', 'Claimed Amount (INR)', 'Approved Amount (INR)', 'Pending Amount (INR)', 'Rejected Amount (INR)'], employeeData);
 
     // Sheet 3: Department Report
     const departmentData = data.allDepartments.map(d => {
@@ -220,8 +237,7 @@ export const exportExcelReport = async (req, res, next) => {
         'Rejected Amount (INR)': deptClaims.filter(c => c.status.startsWith('Rejected')).reduce((sum, c) => sum + c.amount, 0)
       };
     });
-    const wsDepartment = XLSX.utils.json_to_sheet(departmentData);
-    XLSX.book_append_sheet(wb, wsDepartment, 'Department Report');
+    addSheetToWorkbook(wb, 'Department Report', ['Department Code', 'Department Name', 'Allotted Budget (INR)', 'Total Claims Count', 'Total Spent Amount (INR)', 'Approved Amount (INR)', 'Pending Amount (INR)', 'Rejected Amount (INR)'], departmentData);
 
     // Sheet 4: Category Report
     const categories = await ExpenseCategory.find();
@@ -236,8 +252,7 @@ export const exportExcelReport = async (req, res, next) => {
         'Percentage of Total Spend': `${pct.toFixed(2)}%`
       };
     });
-    const wsCategory = XLSX.utils.json_to_sheet(categoryData);
-    XLSX.book_append_sheet(wb, wsCategory, 'Category Report');
+    addSheetToWorkbook(wb, 'Category Report', ['Expense Category', 'Claims Count', 'Total Spent (INR)', 'Percentage of Total Spend'], categoryData);
 
     // Sheet 5: Monthly Trend
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -252,8 +267,7 @@ export const exportExcelReport = async (req, res, next) => {
         'Rejected (INR)': monthClaims.filter(c => c.status.startsWith('Rejected')).reduce((sum, c) => sum + c.amount, 0),
       };
     });
-    const wsMonthly = XLSX.utils.json_to_sheet(monthlyData);
-    XLSX.book_append_sheet(wb, wsMonthly, 'Monthly Trend');
+    addSheetToWorkbook(wb, 'Monthly Trend', ['Month', 'Claims Count', 'Total Amount (INR)', 'Approved (INR)', 'Pending (INR)', 'Rejected (INR)'], monthlyData);
 
     // Sheet 6: Pending Claims
     const pendingData = data.pendingClaims.map(c => ({
@@ -265,8 +279,7 @@ export const exportExcelReport = async (req, res, next) => {
       'Submission Date': new Date(c.date).toLocaleDateString(),
       'Status': c.status
     }));
-    const wsPending = XLSX.utils.json_to_sheet(pendingData);
-    XLSX.book_append_sheet(wb, wsPending, 'Pending Claims');
+    addSheetToWorkbook(wb, 'Pending Claims', ['Claim ID', 'Employee Name', 'Title', 'Category', 'Amount (INR)', 'Submission Date', 'Status'], pendingData);
 
     // Sheet 7: Approved Claims
     const approvedList = data.approvedClaims.map(c => ({
@@ -277,8 +290,7 @@ export const exportExcelReport = async (req, res, next) => {
       'Amount (INR)': c.amount,
       'Settled Date': new Date(c.date).toLocaleDateString()
     }));
-    const wsApproved = XLSX.utils.json_to_sheet(approvedList);
-    XLSX.book_append_sheet(wb, wsApproved, 'Approved Claims');
+    addSheetToWorkbook(wb, 'Approved Claims', ['Claim ID', 'Employee Name', 'Title', 'Category', 'Amount (INR)', 'Settled Date'], approvedList);
 
     // Sheet 8: Rejected Claims
     const rejectedList = data.rejectedClaims.map(c => ({
@@ -289,8 +301,7 @@ export const exportExcelReport = async (req, res, next) => {
       'Amount (INR)': c.amount,
       'Status': c.status
     }));
-    const wsRejected = XLSX.utils.json_to_sheet(rejectedList);
-    XLSX.book_append_sheet(wb, wsRejected, 'Rejected Claims');
+    addSheetToWorkbook(wb, 'Rejected Claims', ['Claim ID', 'Employee Name', 'Title', 'Category', 'Amount (INR)', 'Status'], rejectedList);
 
     // Sheet 9: Payment History
     const paymentData = data.payments.map(p => ({
@@ -305,8 +316,7 @@ export const exportExcelReport = async (req, res, next) => {
       'Amount (INR)': p.amount,
       'Status': p.paymentStatus
     }));
-    const wsPayments = XLSX.utils.json_to_sheet(paymentData);
-    XLSX.book_append_sheet(wb, wsPayments, 'Payment History');
+    addSheetToWorkbook(wb, 'Payment History', ['Transaction ID', 'Bank Ref Number', 'UPI Ref Number', 'Employee ID', 'Employee Name', 'Department', 'Payment Date', 'Payment Method', 'Amount (INR)', 'Status'], paymentData);
 
     // Sheet 10: Budget Utilization
     const budgetData = data.allDepartments.map(d => {
@@ -322,14 +332,13 @@ export const exportExcelReport = async (req, res, next) => {
         'Utilization Percentage': `${utilization.toFixed(2)}%`
       };
     });
-    const wsBudget = XLSX.utils.json_to_sheet(budgetData);
-    XLSX.book_append_sheet(wb, wsBudget, 'Budget Utilization');
+    addSheetToWorkbook(wb, 'Budget Utilization', ['Department Name', 'Allocated Budget (INR)', 'Spent Budget (INR)', 'Remaining Budget (INR)', 'Utilization Percentage'], budgetData);
 
-    const fileBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const fileBuffer = await wb.xlsx.writeBuffer();
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=Fluid_Controls_Enterprise_Report.xlsx');
-    res.send(fileBuffer);
+    res.send(Buffer.from(fileBuffer));
   } catch (error) {
     next(error);
   }

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../services/api';
 import DashboardCard from '../../components/DashboardCard/DashboardCard';
-import { FiSliders, FiActivity, FiUsers, FiLock, FiCheck } from 'react-icons/fi';
+import { FiSliders, FiActivity, FiUsers, FiCheck } from 'react-icons/fi';
 
 const AdminDashboard = () => {
   const { user } = useAuth();
@@ -16,7 +16,7 @@ const AdminDashboard = () => {
   const [mealsCap, setMealsCap] = useState('150');
   const [savedMsg, setSavedMsg] = useState(false);
 
-  const fetchAdminData = async () => {
+  const fetchAdminData = useCallback(async () => {
     try {
       const [resStats, resLogs, resDepts, resCats] = await Promise.all([
         api.get('/reports/dashboard'),
@@ -34,18 +34,17 @@ const AdminDashboard = () => {
     } finally {
       setStatsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchAdminData();
-  }, []);
+  }, [fetchAdminData]);
 
   const handleSaveSettings = async (e) => {
     e.preventDefault();
     setSavedMsg(true);
-    // Mock save log
     try {
-      await api.get('/admin/audit-logs'); // trigger activity
+      await api.get('/admin/audit-logs');
       fetchAdminData();
     } catch (err) {
       console.error(err);
@@ -207,7 +206,7 @@ const AdminDashboard = () => {
             <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
               {logs.map((log) => (
                 <tr key={log._id} className="hover:bg-slate-50/50 transition">
-                  <td className="py-3 font-mono text-slate-500">{new Date(log.timestamp).toLocaleString()}</td>
+                  <td className="py-3 font-mono text-slate-500">{log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A'}</td>
                   <td className="py-3 text-slate-900 font-bold">{log.actor?.name || 'System'} ({log.actor?.role || 'Admin'})</td>
                   <td className="py-3">
                     <span className="px-2 py-0.5 bg-slate-100 rounded border font-semibold text-slate-600">{log.action}</span>

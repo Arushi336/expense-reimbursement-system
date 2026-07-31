@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useExpenses } from '../../hooks/useExpenses';
 import api from '../../services/api';
 import DashboardCard from '../../components/DashboardCard/DashboardCard';
 import ExpenseTable from '../../components/Tables/ExpenseTable';
-import { FiUsers, FiClock, FiDollarSign, FiAlertTriangle } from 'react-icons/fi';
+import { FiClock, FiDollarSign } from 'react-icons/fi';
 
 const HODDashboard = () => {
   const { user } = useAuth();
@@ -12,8 +12,14 @@ const HODDashboard = () => {
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
-  const fetchStatsAndClaims = async () => {
-    fetchExpenses({ department: user.department?._id });
+  const deptId = user?.department?._id || user?.department;
+
+  const fetchStatsAndClaims = useCallback(async () => {
+    if (deptId) {
+      fetchExpenses({ department: deptId });
+    } else {
+      fetchExpenses();
+    }
     try {
       const res = await api.get('/reports/dashboard');
       if (res.data.success) {
@@ -24,16 +30,15 @@ const HODDashboard = () => {
     } finally {
       setStatsLoading(false);
     }
-  };
+  }, [deptId, fetchExpenses]);
 
   useEffect(() => {
-    if (user.department?._id) {
+    if (user) {
       fetchStatsAndClaims();
     }
-  }, [user]);
+  }, [user, fetchStatsAndClaims]);
 
   const handleAction = async (expenseId, nextStatus, comment) => {
-    // Map status string back to action type
     let action = 'Approve';
     if (nextStatus === 'Queried' || nextStatus === 'Returned for Correction') {
       action = 'Return for Correction';
@@ -42,7 +47,6 @@ const HODDashboard = () => {
     }
     
     await executeApproval(expenseId, action, comment);
-    // Refresh stats
     fetchStatsAndClaims();
   };
 
@@ -81,7 +85,7 @@ const HODDashboard = () => {
   };
 
   const totalApproved = stats?.totalApprovedAmount || 0;
-  const deptBudget = user.department?.budget || 120000;
+  const deptBudget = user?.department?.budget || 120000;
   const budgetUsagePercent = Math.min(Math.round((totalApproved / deptBudget) * 100), 100);
 
   return (
@@ -92,7 +96,7 @@ const HODDashboard = () => {
         <div className="absolute -bottom-10 left-10 w-40 h-40 bg-corporate-600/10 rounded-full blur-2xl pointer-events-none" />
         <div className="relative z-10">
           <h1 className="text-2xl font-bold tracking-tight">Department Head Console</h1>
-          <p className="text-sm text-slate-300 mt-1">Managing approvals for <strong className="text-corporate-300">{user.department?.name || 'Unassigned'} Department</strong></p>
+          <p className="text-sm text-slate-300 mt-1">Managing approvals for <strong className="text-corporate-300">{user?.department?.name || 'Unassigned'} Department</strong></p>
         </div>
       </div>
 

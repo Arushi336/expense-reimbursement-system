@@ -26,6 +26,12 @@ export const errorHandler = (err, req, res, next) => {
     res.status(400);
   }
 
+  // Multer / Upload Error
+  if (err.name === 'MulterError' || (err.message && err.message.includes('Only PNG, JPEG, JPG, and PDF'))) {
+    error = new Error(err.message);
+    res.status(400);
+  }
+
   const statusCode = res.statusCode && res.statusCode !== 200 ? res.statusCode : 500;
 
   res.status(statusCode).json({

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useExpenses } from '../../hooks/useExpenses';
 import api from '../../services/api';
 import DashboardCard from '../../components/DashboardCard/DashboardCard';
 import ExpenseTable from '../../components/Tables/ExpenseTable';
-import { FiCheckSquare, FiClock, FiAlertCircle, FiTrendingUp } from 'react-icons/fi';
+import { FiCheckSquare, FiClock, FiAlertCircle } from 'react-icons/fi';
 
 const FinanceDashboard = () => {
   const { user } = useAuth();
@@ -13,7 +13,7 @@ const FinanceDashboard = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
 
-  const fetchStatsAndClaims = async () => {
+  const fetchStatsAndClaims = useCallback(async () => {
     fetchExpenses();
     try {
       const res = await api.get('/reports/dashboard');
@@ -25,11 +25,11 @@ const FinanceDashboard = () => {
     } finally {
       setStatsLoading(false);
     }
-  };
+  }, [fetchExpenses]);
 
   useEffect(() => {
     fetchStatsAndClaims();
-  }, []);
+  }, [fetchStatsAndClaims]);
 
   const handleAction = async (expenseId, nextStatus, comment) => {
     let action = 'Approve';

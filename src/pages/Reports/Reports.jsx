@@ -404,7 +404,7 @@ const Reports = () => {
             >
               <option value="">All Employees</option>
               {filterMetadata.employees.map(e => (
-                <option key={e.email} value={e.email}>{e.name} (${e.employeeId})</option>
+                <option key={e._id || e.email} value={e._id}>{e.name} ({e.employeeId || 'N/A'})</option>
               ))}
             </select>
           </div>

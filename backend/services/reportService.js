@@ -167,7 +167,16 @@ export const generateComprehensiveAnalytics = async (queryParams, currentUser) =
     matchQuery.department = new mongoose.Types.ObjectId(departmentId);
   }
   if (employeeId && employeeId !== 'ALL' && employeeId !== 'null' && employeeId !== 'undefined' && employeeId !== '' && currentUser.role !== 'Employee') {
-    matchQuery.employee = new mongoose.Types.ObjectId(employeeId);
+    if (mongoose.Types.ObjectId.isValid(employeeId)) {
+      const empUser = await User.findOne({ _id: employeeId, role: 'Employee' });
+      if (empUser) {
+        matchQuery.employee = empUser._id;
+      } else {
+        matchQuery.employee = new mongoose.Types.ObjectId('000000000000000000000000');
+      }
+    } else {
+      matchQuery.employee = new mongoose.Types.ObjectId('000000000000000000000000');
+    }
   }
   if (categoryId && categoryId !== 'ALL' && categoryId !== 'null' && categoryId !== 'undefined' && categoryId !== '') {
     matchQuery.category = new mongoose.Types.ObjectId(categoryId);
@@ -211,9 +220,9 @@ export const generateComprehensiveAnalytics = async (queryParams, currentUser) =
     });
   }
 
-  // Fetch all departments & users for counts and labels
+  // Fetch all departments & only Employee role users for counts and labels
   const allDepartments = await Department.find();
-  const allUsers = await User.find({ role: { $ne: 'Admin' } }).populate('department', 'name');
+  const allUsers = await User.find({ role: 'Employee' }).populate('department', 'name');
 
   // Compute Dashboard Summary Cards
   const totalClaimsCount = claims.length;
@@ -360,6 +369,7 @@ export const generateComprehensiveAnalytics = async (queryParams, currentUser) =
     const pending = empClaims.filter(c => ['Submitted', 'Pending Finance', 'Pending Settlement'].includes(c.status)).reduce((sum, c) => sum + c.amount, 0);
     const rejected = empClaims.filter(c => c.status.startsWith('Rejected')).reduce((sum, c) => sum + c.amount, 0);
     return {
+      _id: u._id,
       employeeId: u.employeeId || 'N/A',
       name: u.name,
       email: u.email,

@@ -12,7 +12,7 @@ export const getDashboardStats = async (req, res, next) => {
   try {
     const role = req.user.role;
     const userId = req.user._id;
-    const deptId = req.user.department ? req.user.department._id : null;
+    const deptId = req.user.department ? (req.user.department._id || req.user.department) : null;
 
     let stats = {};
 
@@ -89,7 +89,7 @@ export const getDashboardStats = async (req, res, next) => {
       };
     } 
     else if (role === 'Admin') {
-      const totalEmployees = await User.countDocuments({ role: { $ne: 'Admin' } });
+      const totalEmployees = await User.countDocuments({ role: 'Employee' });
       const claims = await ExpenseClaim.find();
       const pending = claims.filter(c => ['Submitted', 'Pending Finance', 'Pending Settlement'].includes(c.status));
       const approved = claims.filter(c => c.status === 'Approved & Settled');
@@ -209,9 +209,14 @@ export const getCategorySpend = async (req, res, next) => {
 // @access  Private
 export const getDepartmentSpend = async (req, res, next) => {
   try {
-    // Only available to Admin / Finance / HOD
+    const matchQuery = { status: 'Approved & Settled' };
+
+    if (req.user.role === 'HOD') {
+      matchQuery.department = req.user.department ? (req.user.department._id || req.user.department) : null;
+    }
+
     const aggregates = await ExpenseClaim.aggregate([
-      { $match: { status: 'Approved & Settled' } },
+      { $match: matchQuery },
       {
         $group: {
           _id: "$department",
@@ -262,7 +267,16 @@ export const getApprovalTimeStats = async (req, res, next) => {
     }
 
     if (employeeId && employeeId !== 'ALL' && req.user.role !== 'Employee') {
-      matchQuery.employee = employeeId;
+      if (mongoose.Types.ObjectId.isValid(employeeId)) {
+        const empUser = await User.findOne({ _id: employeeId, role: 'Employee' });
+        if (empUser) {
+          matchQuery.employee = empUser._id;
+        } else {
+          matchQuery.employee = new mongoose.Types.ObjectId('000000000000000000000000');
+        }
+      } else {
+        matchQuery.employee = new mongoose.Types.ObjectId('000000000000000000000000');
+      }
     }
     if (departmentId && departmentId !== 'ALL' && req.user.role !== 'HOD') {
       matchQuery.department = departmentId;

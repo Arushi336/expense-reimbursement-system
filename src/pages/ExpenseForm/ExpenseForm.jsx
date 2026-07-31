@@ -83,6 +83,11 @@ const ExpenseForm = () => {
     }
     if (!date) newErrors.date = 'Date of transaction is required';
 
+    const selectedCat = categories.find(c => c._id === category);
+    if (!isDraft && selectedCat?.receiptRequired && Number(amount) > 500 && !receiptFile) {
+      newErrors.receipt = `Receipt attachment is required for ${selectedCat.name} transactions above ₹500`;
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -284,6 +289,7 @@ const ExpenseForm = () => {
                 </span>
                 <span className="text-xs text-slate-400 block mt-1">Drag and drop file here, or click to browse</span>
               </div>
+              {errors.receipt && <span className="text-[10px] text-rose-600 font-semibold block mt-1">{errors.receipt}</span>}
             </div>
 
             <div className="flex gap-4">

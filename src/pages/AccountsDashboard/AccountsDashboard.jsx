@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useExpenses } from '../../hooks/useExpenses';
 import api from '../../services/api';
@@ -13,7 +13,7 @@ const AccountsDashboard = () => {
   const [statsLoading, setStatsLoading] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
 
-  const fetchStatsAndClaims = async () => {
+  const fetchStatsAndClaims = useCallback(async () => {
     fetchExpenses();
     try {
       const res = await api.get('/reports/dashboard');
@@ -25,11 +25,11 @@ const AccountsDashboard = () => {
     } finally {
       setStatsLoading(false);
     }
-  };
+  }, [fetchExpenses]);
 
   useEffect(() => {
     fetchStatsAndClaims();
-  }, []);
+  }, [fetchStatsAndClaims]);
 
   const handleAction = async (expenseId, nextStatus, comment) => {
     if (nextStatus === 'Approved & Settled') {
@@ -86,6 +86,14 @@ const AccountsDashboard = () => {
     }
   };
 
+  const todayTransfersCount = expenses.filter(e => {
+    if (e.status !== 'Approved & Settled') return false;
+    const rawDate = e.updatedAt || e.date;
+    if (!rawDate) return false;
+    const d = new Date(rawDate);
+    return !isNaN(d.getTime()) && d.toDateString() === new Date().toDateString();
+  }).length;
+
   return (
     <div className="space-y-6">
       {/* Welcome Banner */}
@@ -138,7 +146,7 @@ const AccountsDashboard = () => {
             />
             <DashboardCard
               title="Today's Transfers"
-              value={`${expenses.filter(e => e.status === 'Approved & Settled' && new Date(e.updatedAt).toDateString() === new Date().toDateString()).length} Payouts`}
+              value={`${todayTransfersCount} Payouts`}
               subtext="Processed in current batch"
               icon={FiDollarSign}
               trendType="positive"

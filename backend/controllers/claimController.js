@@ -6,6 +6,7 @@ import User from '../models/User.js';
 import Department from '../models/Department.js';
 import computeHash from '../utils/fileHasher.js';
 import { runPolicyAudit, withdrawClaim } from '../services/claimService.js';
+import { CLAIM_STATUS, WORKFLOW_STEP } from '../config/constants.js';
 
 // @desc    Create / Submit claim
 // @route   POST /api/claims
@@ -14,7 +15,7 @@ export const createClaim = async (req, res, next) => {
   try {
     const { title, categoryId, merchant, amount, date, description, items, isDraft } = req.body;
     const employee = req.user._id;
-    const department = req.user.department ? req.user.department._id : null;
+    const department = req.user.department ? (req.user.department._id || req.user.department) : (req.body.departmentId || null);
 
     let receiptUrl = '';
     let receiptPublicId = '';
@@ -22,8 +23,8 @@ export const createClaim = async (req, res, next) => {
 
     // Handle receipt file upload
     if (req.file) {
-      receiptUrl = req.file.filename; // Multer filename or Cloudinary secure URL
-      receiptPublicId = req.file.filename || ''; // Cloudinary public ID
+      receiptUrl = req.file.secure_url || req.file.path || req.file.filename;
+      receiptPublicId = req.file.filename || '';
       receiptHash = computeHash(req.file);
     }
 
@@ -35,8 +36,15 @@ export const createClaim = async (req, res, next) => {
     const count = await ExpenseClaim.countDocuments();
     const claimCode = `EXP-${year}-${String(count + 1).padStart(3, '0')}`;
 
-    const status = isDraft === 'true' || isDraft === true ? 'Draft' : 'Submitted';
-    const currentStep = status === 'Draft' ? 'Draft' : 'HOD';
+    const isSubmitted = !(isDraft === 'true' || isDraft === true);
+    let status = isSubmitted ? CLAIM_STATUS.SUBMITTED : CLAIM_STATUS.DRAFT;
+    let currentStep = isSubmitted ? WORKFLOW_STEP.HOD : WORKFLOW_STEP.DRAFT;
+
+    // If claim is submitted by an HOD or if department is missing, skip HOD review and move straight to Pending Finance
+    if (isSubmitted && (req.user.role === 'HOD' || !department)) {
+      status = CLAIM_STATUS.PENDING_FINANCE;
+      currentStep = WORKFLOW_STEP.FINANCE;
+    }
 
     // Parse items if provided
     let claimItems = [];
@@ -95,8 +103,14 @@ export const getClaims = async (req, res, next) => {
     if (req.user.role === 'Employee') {
       query.employee = req.user._id;
     } else if (req.user.role === 'HOD') {
-      // HOD only views department specific claims
-      query.department = req.user.department ? req.user.department._id : null;
+      // HOD views department specific claims (including any unassigned legacy claims)
+      const hodDept = req.user.department ? (req.user.department._id || req.user.department) : null;
+      if (hodDept) {
+        query.$or = [
+          { department: hodDept },
+          { department: null }
+        ];
+      }
       // Filter out draft claims
       query.status = { $ne: 'Draft' };
     } else if (['Finance', 'Accounts', 'Admin'].includes(req.user.role)) {
@@ -150,8 +164,12 @@ export const getClaimById = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Not authorized to view this claim' });
     }
 
-    if (req.user.role === 'HOD' && claim.department._id.toString() !== req.user.department._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Not authorized to view other departments' });
+    if (req.user.role === 'HOD') {
+      const hodDeptId = req.user.department ? (req.user.department._id || req.user.department).toString() : '';
+      const claimDeptId = claim.department ? (claim.department._id || claim.department).toString() : '';
+      if (hodDeptId && claimDeptId && hodDeptId !== claimDeptId) {
+        return res.status(403).json({ success: false, message: 'Not authorized to view other departments' });
+      }
     }
 
     // Retrieve history timeline logs
@@ -203,7 +221,7 @@ export const updateClaim = async (req, res, next) => {
     let receiptHash = claim.receiptHash;
 
     if (req.file) {
-      receiptUrl = req.file.filename;
+      receiptUrl = req.file.secure_url || req.file.path || req.file.filename;
       receiptPublicId = req.file.filename || '';
       receiptHash = computeHash(req.file);
     }

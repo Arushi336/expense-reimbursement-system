@@ -2,7 +2,14 @@ import crypto from 'crypto';
 import fs from 'fs';
 
 export const computeHash = (file) => {
+  if (!file) return '';
+  if (file.receiptHash) return file.receiptHash;
+  if (file.hash) return file.hash;
+
   try {
+    if (file.buffer) {
+      return crypto.createHash('sha256').update(file.buffer).digest('hex');
+    }
     if (file.path && fs.existsSync(file.path)) {
       const fileBuffer = fs.readFileSync(file.path);
       return crypto.createHash('sha256').update(fileBuffer).digest('hex');
@@ -12,7 +19,8 @@ export const computeHash = (file) => {
   }
   // Fallback unique hash using file details
   return crypto.createHash('sha256')
-    .update(file.originalname + file.size + Date.now().toString())
+    .update((file.originalname || '') + (file.size || '') + Date.now().toString())
     .digest('hex');
 };
+
 export default computeHash;
