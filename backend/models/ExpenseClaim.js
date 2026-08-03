@@ -1,10 +1,16 @@
 import mongoose from 'mongoose';
 
 const expenseItemSchema = new mongoose.Schema({
-  itemName: { type: String, required: true },
-  amount: { type: Number, required: true },
-  description: { type: String }
-});
+  title: { type: String, required: true, trim: true },
+  category: { type: mongoose.Schema.Types.ObjectId, ref: 'ExpenseCategory', required: true },
+  merchant: { type: String, trim: true },
+  amount: { type: Number, required: true, min: [0.01, 'Amount must be greater than 0'] },
+  date: { type: Date, required: true, default: Date.now },
+  description: { type: String, trim: true },
+  receiptUrl: { type: String },
+  receiptPublicId: { type: String },
+  receiptHash: { type: String }
+}, { _id: true });
 
 const expenseClaimSchema = new mongoose.Schema({
   id: {
@@ -32,11 +38,10 @@ const expenseClaimSchema = new mongoose.Schema({
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'ExpenseCategory',
-    required: true
+    required: false
   },
   merchant: {
     type: String,
-    required: [true, 'Merchant is required'],
     trim: true
   },
   amount: {

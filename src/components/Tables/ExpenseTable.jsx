@@ -5,7 +5,7 @@ import { CLAIM_STATUS } from '../../constants/statusConstants';
 import { 
   FiSearch, FiEye, FiCheck, FiX, FiHelpCircle, 
   FiCalendar, FiUser, FiTag, FiFileText, FiDownload,
-  FiArrowUp, FiArrowDown, FiBriefcase, FiDollarSign
+  FiArrowUp, FiArrowDown, FiBriefcase, FiDollarSign, FiPaperclip
 } from 'react-icons/fi';
 
 const ExpenseTable = ({ expenses, onAction, userRole }) => {
@@ -561,7 +561,9 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                       <div className="p-2 bg-slate-100 rounded text-slate-500"><FiUser size={16} /></div>
                       <div>
                         <span className="text-xs text-slate-500 block">Submitted By</span>
-                        <span className="text-sm font-semibold text-slate-800">{selectedExpense.employee?.name} ({selectedExpense.department?.name})</span>
+                        <span className="text-sm font-semibold text-slate-800">
+                          {selectedExpense.employee?.name || 'Employee'} {selectedExpense.department?.name ? `(${selectedExpense.department.name})` : ''}
+                        </span>
                       </div>
                     </div>
 
@@ -576,17 +578,89 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-slate-100 rounded text-slate-500"><FiTag size={16} /></div>
                       <div>
-                        <span className="text-xs text-slate-500 block">Category & Merchant</span>
-                        <span className="text-sm font-semibold text-slate-800">{selectedExpense.category?.name} &bull; {selectedExpense.merchant}</span>
+                        <span className="text-xs text-slate-500 block">Primary Category & Merchant</span>
+                        <span className="text-sm font-semibold text-slate-800">{selectedExpense.category?.name || 'General'} &bull; {selectedExpense.merchant || 'N/A'}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-corporate-50 rounded text-corporate-600 font-bold">₹</div>
                       <div>
-                        <span className="text-xs text-slate-500 block">Reimbursement Amount</span>
-                        <span className="text-sm font-bold text-corporate-700">₹{(selectedExpense.amount || 0).toFixed(2)}</span>
+                        <span className="text-xs text-slate-500 block">Total Claim Amount</span>
+                        <span className="text-sm font-bold text-corporate-700">₹{(selectedExpense.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Line Items Breakdown Table */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Line Items Breakdown ({selectedExpense.items?.length || 1} Items)</h4>
+                      <span className="text-xs font-mono font-bold text-corporate-700">Total: ₹{(selectedExpense.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200 overflow-hidden">
+                        <thead>
+                          <tr className="bg-slate-100 border-b border-slate-200 font-semibold text-slate-600 uppercase">
+                            <th className="p-2.5">Item Title</th>
+                            <th className="p-2.5">Category</th>
+                            <th className="p-2.5">Merchant</th>
+                            <th className="p-2.5">Date</th>
+                            <th className="p-2.5 text-center">Receipt</th>
+                            <th className="p-2.5 text-right">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {selectedExpense.items && selectedExpense.items.length > 0 ? (
+                            selectedExpense.items.map((item, idx) => (
+                              <tr key={item._id || idx} className="hover:bg-slate-50">
+                                <td className="p-2.5 font-semibold text-slate-800">
+                                  {item.title}
+                                  {item.description && <span className="block text-[10px] text-slate-400 font-normal">{item.description}</span>}
+                                </td>
+                                <td className="p-2.5">
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-semibold rounded text-[10px] border border-slate-200">
+                                    {item.category?.name || selectedExpense.category?.name || 'Category'}
+                                  </span>
+                                </td>
+                                <td className="p-2.5 text-slate-600">{item.merchant || selectedExpense.merchant || '—'}</td>
+                                <td className="p-2.5 text-slate-500">{item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}</td>
+                                <td className="p-2.5 text-center">
+                                  {item.receiptUrl || selectedExpense.receiptUrl ? (
+                                    <a
+                                      href={getReceiptSrc(item.receiptUrl || selectedExpense.receiptUrl)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10px] font-bold text-corporate-600 hover:text-corporate-800 hover:underline bg-corporate-50 px-2 py-0.5 rounded border border-corporate-100"
+                                    >
+                                      <FiPaperclip size={11} /> View Receipt
+                                    </a>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">No Receipt</span>
+                                  )}
+                                </td>
+                                <td className="p-2.5 text-right font-bold text-slate-900">₹{(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="p-2.5 font-semibold text-slate-800">{selectedExpense.title}</td>
+                              <td className="p-2.5"><span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-semibold rounded text-[10px]">{selectedExpense.category?.name}</span></td>
+                              <td className="p-2.5 text-slate-600">{selectedExpense.merchant}</td>
+                              <td className="p-2.5 text-slate-500">{selectedExpense.date ? new Date(selectedExpense.date).toLocaleDateString() : 'N/A'}</td>
+                              <td className="p-2.5 text-center">
+                                {selectedExpense.receiptUrl ? (
+                                  <a href={getReceiptSrc(selectedExpense.receiptUrl)} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-corporate-600 hover:underline">View Receipt</a>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">No Receipt</span>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-slate-900">₹{(selectedExpense.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 

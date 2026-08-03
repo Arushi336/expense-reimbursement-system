@@ -46,6 +46,11 @@ export const ExpenseProvider = ({ children }) => {
       
       if (claimData.items) {
         formData.append('items', JSON.stringify(claimData.items));
+        claimData.items.forEach((item, idx) => {
+          if (item.receiptFile) {
+            formData.append(`receipt_${idx}`, item.receiptFile);
+          }
+        });
       }
 
       if (file) {
@@ -84,6 +89,11 @@ export const ExpenseProvider = ({ children }) => {
       
       if (claimData.items) {
         formData.append('items', JSON.stringify(claimData.items));
+        claimData.items.forEach((item, idx) => {
+          if (item.receiptFile) {
+            formData.append(`receipt_${idx}`, item.receiptFile);
+          }
+        });
       }
 
       if (file) {

@@ -176,9 +176,42 @@ export const getCategorySpend = async (req, res, next) => {
     const aggregates = await ExpenseClaim.aggregate([
       { $match: matchQuery },
       {
+        $facet: {
+          byItemCategory: [
+            { $unwind: "$items" },
+            {
+              $group: {
+                _id: "$items.category",
+                value: { $sum: "$items.amount" }
+              }
+            }
+          ],
+          byTopCategory: [
+            {
+              $group: {
+                _id: "$category",
+                value: { $sum: "$amount" }
+              }
+            }
+          ]
+        }
+      },
+      {
+        $project: {
+          combined: {
+            $cond: [
+              { $gt: [{ $size: "$byItemCategory" }, 0] },
+              "$byItemCategory",
+              "$byTopCategory"
+            ]
+          }
+        }
+      },
+      { $unwind: "$combined" },
+      {
         $group: {
-          _id: "$category",
-          value: { $sum: "$amount" }
+          _id: "$combined._id",
+          value: { $sum: "$combined.value" }
         }
       },
       {

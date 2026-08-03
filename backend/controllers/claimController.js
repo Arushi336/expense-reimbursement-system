@@ -56,24 +56,102 @@ export const createClaim = async (req, res, next) => {
       }
     }
 
+    // Fallback if single-item payload was sent without items array
+    if ((!claimItems || claimItems.length === 0) && title && amount) {
+      claimItems = [{
+        title,
+        categoryId: categoryId || category,
+        merchant,
+        amount: Number(amount),
+        date: date || new Date(),
+        description
+      }];
+    }
+
+    if (!claimItems || claimItems.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one expense line item is required' });
+    }
+
+    // Process line items & compute server-side total amount
+    let calculatedTotal = 0;
+    let overallViolation = false;
+    const violationMessages = [];
+
+    const processedItems = await Promise.all(claimItems.map(async (item, idx) => {
+      const itemAmount = Number(item.amount);
+      if (isNaN(itemAmount) || itemAmount <= 0) {
+        throw new Error(`Invalid amount for item "${item.title || item.itemName || 'Expense'}"`);
+      }
+      calculatedTotal += itemAmount;
+
+      const itemCatId = item.categoryId || item.category || categoryId;
+
+      // Extract item-specific receipt file if uploaded
+      let itemReceiptUrl = item.receiptUrl || '';
+      let itemReceiptPublicId = item.receiptPublicId || '';
+      let itemReceiptHash = item.receiptHash || '';
+
+      if (req.files && req.files.length > 0) {
+        const itemFile = req.files.find(f => f.fieldname === `receipt_${idx}` || f.fieldname === `receipts[${idx}]`) || req.files[idx];
+        if (itemFile) {
+          itemReceiptUrl = itemFile.secure_url;
+          itemReceiptPublicId = itemFile.filename;
+          itemReceiptHash = itemFile.receiptHash || '';
+        }
+      }
+
+      if (!itemReceiptUrl && receiptUrl) {
+        itemReceiptUrl = receiptUrl;
+        itemReceiptPublicId = receiptPublicId;
+        itemReceiptHash = receiptHash;
+      }
+
+      const itemHasReceipt = !!itemReceiptUrl;
+      const audit = await runPolicyAudit(itemAmount, itemCatId, itemHasReceipt, itemReceiptHash);
+      
+      if (audit.violated) {
+        overallViolation = true;
+        violationMessages.push(`${item.title || item.itemName || 'Item'}: ${audit.message}`);
+      }
+
+      return {
+        title: item.title || item.itemName || 'Expense Item',
+        category: itemCatId,
+        merchant: item.merchant || merchant || '',
+        amount: itemAmount,
+        date: item.date ? new Date(item.date) : new Date(date || Date.now()),
+        description: item.description || '',
+        receiptUrl: itemReceiptUrl,
+        receiptPublicId: itemReceiptPublicId,
+        receiptHash: itemReceiptHash
+      };
+    }));
+
+    const primaryItem = processedItems[0];
+    if (!receiptUrl && primaryItem.receiptUrl) {
+      receiptUrl = primaryItem.receiptUrl;
+      receiptPublicId = primaryItem.receiptPublicId;
+      receiptHash = primaryItem.receiptHash;
+    }
+
     const claim = await ExpenseClaim.create({
       id: claimCode,
-      title,
+      title: title || primaryItem.title,
       employee,
       department,
-      category: categoryId,
-      merchant,
-      amount: Number(amount),
-      date: new Date(date),
-      description,
+      category: primaryItem.category,
+      merchant: primaryItem.merchant,
+      amount: calculatedTotal,
+      date: primaryItem.date,
+      description: description || primaryItem.description,
       receiptUrl,
       receiptPublicId,
       receiptHash,
       status,
       currentStep,
-      policyViolation: audit.violated,
-      policyMessage: audit.message,
-      items: claimItems
+      policyViolation: overallViolation,
+      policyMessage: violationMessages.join('; '),
+      items: processedItems
     });
 
     // Create Approval History action log
@@ -81,7 +159,7 @@ export const createClaim = async (req, res, next) => {
       claimId: claim._id,
       actionBy: employee,
       role: 'Employee',
-      action: status === 'Draft' ? 'Submit' : 'Submit', // Record action as Submit or Draft
+      action: status === 'Draft' ? 'Submit' : 'Submit',
       remarks: status === 'Draft' ? 'Draft saved.' : 'Claim submitted for approval.'
     });
 
@@ -103,7 +181,6 @@ export const getClaims = async (req, res, next) => {
     if (req.user.role === 'Employee') {
       query.employee = req.user._id;
     } else if (req.user.role === 'HOD') {
-      // HOD views department specific claims (including any unassigned legacy claims)
       const hodDept = req.user.department ? (req.user.department._id || req.user.department) : null;
       if (hodDept) {
         query.$or = [
@@ -111,22 +188,18 @@ export const getClaims = async (req, res, next) => {
           { department: null }
         ];
       }
-      // Filter out draft claims
       query.status = { $ne: 'Draft' };
     } else if (['Finance', 'Accounts', 'Admin'].includes(req.user.role)) {
-      // Admins/Auditors view all non-drafts
       if (req.user.role !== 'Admin') {
         query.status = { $ne: 'Draft' };
       }
     }
 
-    // Apply URL Query filters
     if (employee && req.user.role !== 'Employee') query.employee = employee;
     if (status && status !== 'ALL') query.status = status;
     if (category && category !== 'ALL') query.category = category;
     if (department && department !== 'ALL' && req.user.role !== 'HOD') query.department = department;
     
-    // Date Range
     if (from || to) {
       query.date = {};
       if (from) query.date.$gte = new Date(from);
@@ -137,6 +210,7 @@ export const getClaims = async (req, res, next) => {
       .populate('employee', 'name email avatar')
       .populate('category', 'name code')
       .populate('department', 'name code')
+      .populate('items.category', 'name code maxLimit receiptRequired')
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, count: claims.length, data: claims });
@@ -153,13 +227,13 @@ export const getClaimById = async (req, res, next) => {
     const claim = await ExpenseClaim.findById(req.params.id)
       .populate('employee', 'name email avatar')
       .populate('category', 'name code maxLimit')
-      .populate('department', 'name code HOD');
+      .populate('department', 'name code HOD')
+      .populate('items.category', 'name code maxLimit receiptRequired');
 
     if (!claim) {
       return res.status(404).json({ success: false, message: 'Expense claim not found' });
     }
 
-    // Check permissions
     if (req.user.role === 'Employee' && claim.employee._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized to view this claim' });
     }
@@ -172,12 +246,10 @@ export const getClaimById = async (req, res, next) => {
       }
     }
 
-    // Retrieve history timeline logs
     const history = await ApprovalHistory.find({ claimId: claim._id })
       .populate('actionBy', 'name email role')
       .sort({ timestamp: 1 });
 
-    // Retrieve Payment info if settled
     const payment = await Payment.findOne({ claimId: claim._id })
       .populate('processedBy', 'name email');
 
@@ -204,12 +276,10 @@ export const updateClaim = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Expense claim not found' });
     }
 
-    // Check ownership
     if (claim.employee.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized to edit this claim' });
     }
 
-    // Only allow editing in Draft or Returned state
     if (!['Draft', 'Returned for Correction'].includes(claim.status)) {
       return res.status(400).json({ success: false, message: 'Only Draft or Correction claims can be edited' });
     }
@@ -226,13 +296,8 @@ export const updateClaim = async (req, res, next) => {
       receiptHash = computeHash(req.file);
     }
 
-    const audit = await runPolicyAudit(Number(amount || claim.amount), categoryId || claim.category, !!req.file || !!receiptUrl, receiptHash);
-
-    const status = isDraft === 'true' || isDraft === true ? 'Draft' : 'Submitted';
-    const currentStep = status === 'Draft' ? 'Draft' : 'HOD';
-
     // Parse items
-    let claimItems = claim.items;
+    let claimItems = [];
     if (items) {
       try {
         claimItems = typeof items === 'string' ? JSON.parse(items) : items;
@@ -241,21 +306,95 @@ export const updateClaim = async (req, res, next) => {
       }
     }
 
+    if ((!claimItems || claimItems.length === 0) && (title || amount)) {
+      claimItems = [{
+        title: title || claim.title,
+        categoryId: categoryId || claim.category,
+        merchant: merchant || claim.merchant,
+        amount: amount ? Number(amount) : claim.amount,
+        date: date || claim.date,
+        description: description || claim.description
+      }];
+    }
+
+    if (!claimItems || claimItems.length === 0) {
+      claimItems = claim.items;
+    }
+
+    let calculatedTotal = 0;
+    let overallViolation = false;
+    const violationMessages = [];
+
+    const processedItems = await Promise.all(claimItems.map(async (item, idx) => {
+      const itemAmount = Number(item.amount);
+      calculatedTotal += itemAmount;
+
+      const itemCatId = item.categoryId || item.category || categoryId || claim.category;
+      
+      let itemReceiptUrl = item.receiptUrl || '';
+      let itemReceiptPublicId = item.receiptPublicId || '';
+      let itemReceiptHash = item.receiptHash || '';
+
+      if (req.files && req.files.length > 0) {
+        const itemFile = req.files.find(f => f.fieldname === `receipt_${idx}` || f.fieldname === `receipts[${idx}]`) || req.files[idx];
+        if (itemFile) {
+          itemReceiptUrl = itemFile.secure_url;
+          itemReceiptPublicId = itemFile.filename;
+          itemReceiptHash = itemFile.receiptHash || '';
+        }
+      }
+
+      if (!itemReceiptUrl && receiptUrl) {
+        itemReceiptUrl = receiptUrl;
+        itemReceiptPublicId = receiptPublicId;
+        itemReceiptHash = receiptHash;
+      }
+
+      const itemHasReceipt = !!itemReceiptUrl;
+      const audit = await runPolicyAudit(itemAmount, itemCatId, itemHasReceipt, itemReceiptHash);
+
+      if (audit.violated) {
+        overallViolation = true;
+        violationMessages.push(`${item.title || item.itemName || 'Item'}: ${audit.message}`);
+      }
+
+      return {
+        title: item.title || item.itemName || 'Expense Item',
+        category: itemCatId,
+        merchant: item.merchant || merchant || claim.merchant || '',
+        amount: itemAmount,
+        date: item.date ? new Date(item.date) : new Date(date || claim.date),
+        description: item.description || '',
+        receiptUrl: itemReceiptUrl,
+        receiptPublicId: itemReceiptPublicId,
+        receiptHash: itemReceiptHash
+      };
+    }));
+
+    const primaryItem = processedItems[0];
+    if (!receiptUrl && primaryItem.receiptUrl) {
+      receiptUrl = primaryItem.receiptUrl;
+      receiptPublicId = primaryItem.receiptPublicId;
+      receiptHash = primaryItem.receiptHash;
+    }
+    const status = isDraft === 'true' || isDraft === true ? 'Draft' : 'Submitted';
+    const currentStep = status === 'Draft' ? 'Draft' : 'HOD';
+
     claim = await ExpenseClaim.findByIdAndUpdate(req.params.id, {
-      title: title || claim.title,
-      category: categoryId || claim.category,
-      merchant: merchant || claim.merchant,
-      amount: amount ? Number(amount) : claim.amount,
-      date: date ? new Date(date) : claim.date,
-      description: description !== undefined ? description : claim.description,
+      title: title || primaryItem.title,
+      category: primaryItem.category,
+      merchant: primaryItem.merchant,
+      amount: calculatedTotal,
+      date: primaryItem.date,
+      description: description !== undefined ? description : primaryItem.description,
       receiptUrl,
       receiptPublicId,
       receiptHash,
       status,
       currentStep,
-      policyViolation: audit.violated,
-      policyMessage: audit.message,
-      items: claimItems
+      policyViolation: overallViolation,
+      policyMessage: violationMessages.join('; '),
+      items: processedItems
     }, { new: true });
 
     // History Log
