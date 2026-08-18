@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { FiLock, FiMail, FiArrowRight, FiShield, FiCpu } from 'react-icons/fi';
 import fluidLogo from '../../assets/fluid_logo_main.png';
@@ -108,7 +108,12 @@ const Login = () => {
                   <input type="checkbox" defaultChecked className="rounded border-slate-300 text-corporate-600 focus:ring-corporate-500" />
                   Remember station
                 </label>
-                <a href="#forgot" className="text-corporate-600 font-bold hover:underline">Forgot access key?</a>
+                <Link
+  to="/forgot-password"
+  className="text-corporate-600 font-bold hover:underline"
+>
+  Forgot Password?
+</Link>
               </div>
 
               <button
