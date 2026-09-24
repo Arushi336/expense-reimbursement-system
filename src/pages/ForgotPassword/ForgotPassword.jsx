@@ -1,21 +1,20 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { FiArrowLeft, FiMail, FiSend, FiCheckCircle } from 'react-icons/fi';
+import { Link, useNavigate } from 'react-router-dom';
+import { FiArrowLeft, FiMail, FiSend } from 'react-icons/fi';
 import api from '../../services/api';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    setMessage('');
     setError('');
 
-    if (!email) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       setError('Please enter your registered email address.');
       return;
     }
@@ -23,16 +22,14 @@ const ForgotPassword = () => {
     try {
       setLoading(true);
 
-      const response = await api.post('/auth/forgot-password', {
-        email
+      await api.post('/auth/forgot-password', {
+        email: trimmedEmail
       });
 
-      setMessage(
-        response.data?.message ||
-        'If an account exists with this email, a password reset link has been sent.'
-      );
-
-      setEmail('');
+      // Navigate to verify-otp with email in state
+      navigate('/verify-otp', {
+        state: { email: trimmedEmail }
+      });
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -45,8 +42,11 @@ const ForgotPassword = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-corporate-950 flex items-center justify-center p-4">
+      {/* Background radial glows */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(14,144,233,0.12),transparent_40%)] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(99,102,241,0.08),transparent_50%)] pointer-events-none" />
       
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md relative z-10">
         
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 lg:p-10">
           
@@ -61,29 +61,21 @@ const ForgotPassword = () => {
           </div>
 
           <div className="mb-8">
-            <div className="w-12 h-12 rounded-2xl bg-corporate-50 flex items-center justify-center mb-5">
+            <div className="w-12 h-12 rounded-2xl bg-corporate-50 flex items-center justify-center mb-5 border border-corporate-100">
               <FiMail className="text-corporate-600" size={23} />
             </div>
 
-            <h1 className="text-2xl font-bold text-slate-950">
+            <h1 className="text-2xl font-bold text-slate-950 font-display">
               Forgot Password?
             </h1>
 
             <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-              Enter your registered corporate email address and we'll send
-              you a link to reset your password.
+              Enter your registered corporate email address and we'll send you a 6-digit OTP to reset your password.
             </p>
           </div>
 
-          {message && (
-            <div className="mb-5 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm font-medium flex gap-3 items-start">
-              <FiCheckCircle className="mt-0.5 shrink-0" size={18} />
-              <span>{message}</span>
-            </div>
-          )}
-
           {error && (
-            <div className="mb-5 p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-sm font-medium">
+            <div className="mb-5 p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-sm font-medium animate-shake">
               {error}
             </div>
           )}
@@ -107,7 +99,6 @@ const ForgotPassword = () => {
                   onChange={(e) => {
                     setEmail(e.target.value);
                     setError('');
-                    setMessage('');
                   }}
                   placeholder="name@company.com"
                   className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-corporate-500 focus:border-corporate-500 transition-all text-slate-800"
@@ -119,13 +110,13 @@ const ForgotPassword = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-corporate-600 hover:bg-corporate-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2"
+              className="w-full py-3 bg-corporate-600 hover:bg-corporate-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-bold shadow-md shadow-corporate-100 hover:shadow-lg transition-all flex justify-center items-center gap-2"
             >
               {loading ? (
-                'Sending...'
+                'Sending OTP...'
               ) : (
                 <>
-                  Send Reset Link
+                  Send OTP
                   <FiSend size={16} />
                 </>
               )}
@@ -134,7 +125,7 @@ const ForgotPassword = () => {
           </form>
 
           <p className="text-xs text-slate-400 text-center mt-7">
-            For security, password reset links expire after a limited time.
+            For security, verification OTPs expire after 10 minutes.
           </p>
 
         </div>

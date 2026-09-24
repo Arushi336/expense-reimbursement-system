@@ -1,5 +1,5 @@
+import './config/env.js';
 import express from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,6 +13,7 @@ import xss from 'xss-clean';
 import connectDB from './config/db.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
 import { ensureBootstrapData } from './scripts/bootstrapDefaults.js';
+import { verifySmtpConnection } from './config/nodemailer.js';
 
 // Route Imports
 import authRoutes from './routes/auth.js';
@@ -46,9 +47,11 @@ app.use('/api', limiter);
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isProd ? 100 : 5000,
-  message: { success: false, message: 'Too many login attempts, please try again after 15 minutes.' }
+  message: { success: false, message: 'Too many authentication attempts, please try again after 15 minutes.' }
 });
 app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/verify-reset-otp', authLimiter);
 
 app.use(mongoSanitize());
 app.use(xss());
@@ -119,12 +122,12 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-  // Load env vars
-  dotenv.config();
-
   // Connect to Database
   await connectDB();
   await ensureBootstrapData();
+
+  // Verify SMTP Connection at startup
+  await verifySmtpConnection();
 
   app.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
@@ -133,3 +136,13 @@ const startServer = async () => {
 };
 
 startServer();
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Promise Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err.message);
+});
+
+export default app;

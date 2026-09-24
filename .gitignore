@@ -23,9 +23,16 @@ dist-ssr
 *.sln
 *.sw?
 
+# Environment files
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
 # Backend additions
 backend/node_modules
-backend/.env
 backend/uploads/*
 !backend/uploads/.gitkeep
 

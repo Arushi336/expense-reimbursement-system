@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from '../layouts/AppLayout';
 import Login from '../pages/Login/Login';
 import ForgotPassword from '../pages/ForgotPassword/ForgotPassword';
+import VerifyOtp from '../pages/VerifyOtp/VerifyOtp';
 import ResetPassword from '../pages/ResetPassword/ResetPassword';
 import EmployeeDashboard from '../pages/EmployeeDashboard/EmployeeDashboard';
 import HODDashboard from '../pages/HODDashboard/HODDashboard';
@@ -21,10 +22,11 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      {/* Public Route */}
+      {/* Public Routes */}
       <Route path="/login" element={!token ? <Login /> : <Navigate to="/" replace />} />
-<Route path="/forgot-password" element={<ForgotPassword />} />
-<Route path="/reset-password/:token" element={<ResetPassword />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/verify-otp" element={<VerifyOtp />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       {/* Protected Routes wrapped in AppLayout */}
       <Route element={<AppLayout />}>
         <Route path="/" element={

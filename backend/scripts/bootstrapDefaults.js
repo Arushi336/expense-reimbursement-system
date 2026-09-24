@@ -67,6 +67,16 @@ const stakeholders = [
     departmentCode: 'IT',
     employeeId: 'EMP-005',
     phoneNumber: '+919876543214'
+  },
+  {
+    name: 'Uday Kale',
+    email: 'udaykale2024.it@mmcoe.edu.in',
+    password: 'password123',
+    role: 'Employee',
+    departmentCode: 'IT',
+    employeeId: 'EMP-006',
+    phoneNumber: '+919876543215',
+    allottedBudget: 25000
   }
 ];
 
@@ -107,12 +117,6 @@ const ensureStakeholder = async (stakeholderData, departmentsByCode) => {
 };
 
 export const ensureBootstrapData = async () => {
-  const userCount = await User.countDocuments();
-
-  if (userCount > 0) {
-    return { created: false };
-  }
-
   const departmentsByCode = new Map();
   for (const departmentData of departments) {
     const department = await ensureDepartment(departmentData);
@@ -123,9 +127,14 @@ export const ensureBootstrapData = async () => {
     await ensureCategory(categoryData);
   }
 
+  let createdAny = false;
   for (const stakeholderData of stakeholders) {
-    await ensureStakeholder(stakeholderData, departmentsByCode);
+    const existingUser = await User.findOne({ email: stakeholderData.email });
+    if (!existingUser) {
+      await ensureStakeholder(stakeholderData, departmentsByCode);
+      createdAny = true;
+    }
   }
 
-  return { created: true };
+  return { created: createdAny };
 };
