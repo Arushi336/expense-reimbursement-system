@@ -18,6 +18,11 @@ if (fs.existsSync(rootEnvPath)) {
 }
 dotenv.config();
 
+// Support both MONGO_URI and MONGODB_URI seamlessly
+if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+  process.env.MONGO_URI = process.env.MONGODB_URI;
+}
+
 // ── Production Fail-Fast: Required Secrets ────────────────────────────
 const isProd = process.env.NODE_ENV === 'production';
 

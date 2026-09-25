@@ -8,7 +8,10 @@
     "start": "node server.js",
     "dev": "node server.js",
     "seed": "node scripts/seed.js",
-    "test:otp": "node scripts/testOtpFlow.js"
+    "test": "node tests/security.test.js",
+    "test:security": "node tests/security.test.js",
+    "test:otp": "node scripts/testOtpFlow.js",
+    "provision:admin": "node scripts/provisionAdmin.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.0",
