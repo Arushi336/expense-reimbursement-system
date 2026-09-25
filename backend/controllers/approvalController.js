@@ -4,7 +4,7 @@ import Notification from '../models/Notification.js';
 import AuditLog from '../models/AuditLog.js';
 import { CLAIM_STATUS, WORKFLOW_STEP } from '../config/constants.js';
 
-// @desc    Process HOD / Finance / Accounts claim approval action
+// @desc    Process HOD / Finance / Accounts claim approval action with atomic concurrency locking
 // @route   POST /api/approvals/:claimId
 // @access  Private (HOD, Finance, Accounts, Admin)
 export const processApproval = async (req, res, next) => {
@@ -50,8 +50,10 @@ export const processApproval = async (req, res, next) => {
     let nextStep = '';
     let notificationType = '';
     let notificationMsg = '';
+    let auditAction = 'CLAIM_UPDATED';
 
     if (action === 'Approve') {
+      auditAction = 'CLAIM_APPROVED';
       if (userRole === 'HOD' || (userRole === 'Admin' && claim.status === CLAIM_STATUS.SUBMITTED)) {
         nextStatus = CLAIM_STATUS.PENDING_FINANCE;
         nextStep = WORKFLOW_STEP.FINANCE;
@@ -69,6 +71,7 @@ export const processApproval = async (req, res, next) => {
         notificationMsg = `Your claim ${claim.id} was settled and approved by Accounts.`;
       }
     } else if (action === 'Reject') {
+      auditAction = 'CLAIM_REJECTED';
       nextStatus = userRole === 'HOD' 
         ? CLAIM_STATUS.REJECTED_BY_HOD 
         : userRole === 'Finance' 
@@ -78,6 +81,7 @@ export const processApproval = async (req, res, next) => {
       notificationType = 'ClaimRejected';
       notificationMsg = `Your claim ${claim.id} was rejected by ${req.user.name} (${userRole}). Remarks: ${remarks || 'None'}`;
     } else if (action === 'Return for Correction') {
+      auditAction = 'CLAIM_UPDATED';
       nextStatus = CLAIM_STATUS.RETURNED_FOR_CORRECTION;
       nextStep = WORKFLOW_STEP.DRAFT;
       notificationType = 'CorrectionRequested';
@@ -86,10 +90,19 @@ export const processApproval = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid action type' });
     }
 
-    // Update claim state
-    claim.status = nextStatus;
-    claim.currentStep = nextStep;
-    await claim.save();
+    // Atomic update on current status to prevent concurrent double-processing
+    const updatedClaim = await ExpenseClaim.findOneAndUpdate(
+      { _id: claim._id, status: claim.status },
+      { status: nextStatus, currentStep: nextStep },
+      { new: true }
+    );
+
+    if (!updatedClaim) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Conflict: This claim has already been updated or processed by another user.' 
+      });
+    }
 
     // Create approval history entry
     const historyEntry = await ApprovalHistory.create({
@@ -107,18 +120,20 @@ export const processApproval = async (req, res, next) => {
       type: notificationType
     });
 
-    // Create Admin Audit logs
+    // Standardized Enterprise Audit Log
     await AuditLog.create({
       actor: req.user._id,
-      action: `${userRole} Review Action`,
-      detail: `${userRole} ${req.user.name} processed claim ${claim.id} with action: ${action}.`,
+      action: auditAction,
+      resource: 'ExpenseClaim',
+      resourceId: claim._id,
+      detail: `${userRole} ${req.user.name} executed ${action} on claim ${claim.id}. Remarks: ${remarks || 'None'}`,
       ipAddress: req.ip
     });
 
     res.status(200).json({
       success: true,
       message: `Claim ${action}d successfully.`,
-      data: claim,
+      data: updatedClaim,
       history: historyEntry
     });
   } catch (error) {

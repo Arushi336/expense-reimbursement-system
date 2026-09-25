@@ -109,5 +109,11 @@ const expenseClaimSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// ── Database Indexes ────────────────────────────────────────────────────
+expenseClaimSchema.index({ status: 1, createdAt: -1 });
+expenseClaimSchema.index({ department: 1, status: 1 });
+expenseClaimSchema.index({ employee: 1, status: 1, createdAt: -1 });
+expenseClaimSchema.index({ date: 1 });
+
 const ExpenseClaim = mongoose.model('ExpenseClaim', expenseClaimSchema);
 export default ExpenseClaim;

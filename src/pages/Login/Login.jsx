@@ -105,7 +105,7 @@ const Login = () => {
 
               <div className="flex justify-between items-center text-xs pt-1">
                 <label className="flex items-center gap-1.5 text-slate-500 font-semibold cursor-pointer">
-                  <input type="checkbox" defaultChecked className="rounded border-slate-300 text-corporate-600 focus:ring-corporate-500" />
+                  <input type="checkbox" className="rounded border-slate-300 text-corporate-600 focus:ring-corporate-500" />
                   Remember station
                 </label>
                 <Link

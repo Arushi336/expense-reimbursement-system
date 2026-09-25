@@ -1,0 +1,26 @@
+# ── Backend Dockerfile ────────────────────────────────────────
+FROM node:20-alpine AS backend
+
+# Security: run as non-root user
+RUN addgroup -g 1001 -S eers && adduser -S eers -u 1001
+
+WORKDIR /app
+
+# Copy package files first for layer caching
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Copy application code
+COPY backend/ .
+
+# Create uploads directory
+RUN mkdir -p uploads && chown -R eers:eers /app
+
+USER eers
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
+
+CMD ["node", "server.js"]

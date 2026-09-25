@@ -3,11 +3,11 @@ import axios from 'axios';
 const API_URL = 'http://localhost:5000/api';
 
 const users = {
-  employee: { email: 'arjun.sharma@company.com', password: 'password123' },
-  hod: { email: 'rajesh.deshmukh@company.com', password: 'password123' },
-  finance: { email: 'vivek.kulkarni@company.com', password: 'password123' },
-  accounts: { email: 'suresh.iyer@company.com', password: 'password123' },
-  admin: { email: 'amit.patil@company.com', password: 'password123' }
+  employee: { email: 'arjun.sharma@company.com', password: 'DevPass@123!' },
+  hod: { email: 'rajesh.deshmukh@company.com', password: 'DevPass@123!' },
+  finance: { email: 'vivek.kulkarni@company.com', password: 'DevPass@123!' },
+  accounts: { email: 'suresh.iyer@company.com', password: 'DevPass@123!' },
+  admin: { email: 'amit.patil@company.com', password: 'DevPass@123!' }
 };
 
 const tokens = {};

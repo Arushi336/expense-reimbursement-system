@@ -20,11 +20,14 @@ const categories = [
   { name: 'Others', code: 'OTHER', maxLimit: 3000, receiptRequired: true }
 ];
 
-const stakeholders = [
+// ── DEVELOPMENT-ONLY demo stakeholders ──────────────────────────────────
+// These users are NEVER created in production.
+// Production admin accounts must be created through a secure process.
+const devStakeholders = [
   {
     name: 'Arjun Sharma',
     email: 'arjun.sharma@company.com',
-    password: 'password123',
+    password: 'DevPass@123!',
     role: 'Employee',
     departmentCode: 'MKT',
     employeeId: 'EMP-001',
@@ -34,7 +37,7 @@ const stakeholders = [
   {
     name: 'Rajesh Deshmukh',
     email: 'rajesh.deshmukh@company.com',
-    password: 'password123',
+    password: 'DevPass@123!',
     role: 'HOD',
     departmentCode: 'MKT',
     employeeId: 'EMP-002',
@@ -44,7 +47,7 @@ const stakeholders = [
   {
     name: 'Vivek Kulkarni',
     email: 'vivek.kulkarni@company.com',
-    password: 'password123',
+    password: 'DevPass@123!',
     role: 'Finance',
     departmentCode: 'FIN',
     employeeId: 'EMP-003',
@@ -53,7 +56,7 @@ const stakeholders = [
   {
     name: 'Suresh Iyer',
     email: 'suresh.iyer@company.com',
-    password: 'password123',
+    password: 'DevPass@123!',
     role: 'Accounts',
     departmentCode: 'ACC',
     employeeId: 'EMP-004',
@@ -62,7 +65,7 @@ const stakeholders = [
   {
     name: 'Amit Patil',
     email: 'amit.patil@company.com',
-    password: 'password123',
+    password: 'DevPass@123!',
     role: 'Admin',
     departmentCode: 'IT',
     employeeId: 'EMP-005',
@@ -71,7 +74,7 @@ const stakeholders = [
   {
     name: 'Uday Kale',
     email: 'udaykale2024.it@mmcoe.edu.in',
-    password: 'password123',
+    password: 'DevPass@123!',
     role: 'Employee',
     departmentCode: 'IT',
     employeeId: 'EMP-006',
@@ -117,6 +120,9 @@ const ensureStakeholder = async (stakeholderData, departmentsByCode) => {
 };
 
 export const ensureBootstrapData = async () => {
+  const isProd = process.env.NODE_ENV === 'production';
+  
+  // Departments and categories are always bootstrapped (reference data)
   const departmentsByCode = new Map();
   for (const departmentData of departments) {
     const department = await ensureDepartment(departmentData);
@@ -127,13 +133,24 @@ export const ensureBootstrapData = async () => {
     await ensureCategory(categoryData);
   }
 
+  // SECURITY: NEVER create demo users in production
+  if (isProd) {
+    console.log('Production mode: Skipping demo user creation');
+    return { created: false };
+  }
+
+  // Development only: create demo stakeholders
   let createdAny = false;
-  for (const stakeholderData of stakeholders) {
+  for (const stakeholderData of devStakeholders) {
     const existingUser = await User.findOne({ email: stakeholderData.email });
     if (!existingUser) {
       await ensureStakeholder(stakeholderData, departmentsByCode);
       createdAny = true;
     }
+  }
+
+  if (createdAny) {
+    console.log('Development seed data: Demo users created');
   }
 
   return { created: createdAny };

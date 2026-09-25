@@ -1,0 +1,87 @@
+name: EERS CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend Build & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+        env:
+          VITE_API_BASE_URL: /api
+
+  backend:
+    name: Backend Checks
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: cd backend && npm ci
+      - run: cd backend && node --check server.js
+        env:
+          JWT_SECRET: ci-test-secret-not-for-production-use
+          JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-production
+          MONGO_URI: mongodb://127.0.0.1:27017/eers_test
+          NODE_ENV: test
+
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    needs: [backend]
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      - run: cd backend && npm ci
+      - name: Start backend server
+        run: cd backend && node server.js &
+        env:
+          JWT_SECRET: ci-test-secret-not-for-production-use-1234567890abcdef
+          JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-production-use-abcdef
+          MONGO_URI: mongodb://127.0.0.1:27017/eers_test
+          NODE_ENV: development
+          PORT: 5000
+      - run: sleep 5
+      - run: node backend/tests/security.test.js
+        env:
+          TEST_API_URL: http://localhost:5000/api
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci && npm audit --audit-level=high || true
+      - run: cd backend && npm ci && npm audit --audit-level=high || true

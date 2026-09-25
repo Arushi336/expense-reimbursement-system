@@ -5,7 +5,7 @@ import { FiMenu, FiBell, FiChevronDown, FiUser, FiShield, FiX, FiCheckCircle } f
 import { useNavigate } from 'react-router-dom';
 
 const Navbar = ({ toggleSidebar }) => {
-  const { user, switchRole, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);

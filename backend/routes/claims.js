@@ -1,5 +1,5 @@
 import express from 'express';
-import { createClaim, getClaims, getClaimById, updateClaim, deleteClaim, withdrawClaimController } from '../controllers/claimController.js';
+import { createClaim, getClaims, getClaimById, updateClaim, deleteClaim, withdrawClaimController, getClaimReceipt } from '../controllers/claimController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 import { uploadReceipt } from '../middleware/uploadMiddleware.js';
 import { validateBody } from '../middleware/validationMiddleware.js';
@@ -119,6 +119,7 @@ router.get('/', getClaims);
  *         description: Claim not found
  */
 router.get('/:id', getClaimById);
+router.get('/:id/receipt', getClaimReceipt);
 
 /**
  * @swagger

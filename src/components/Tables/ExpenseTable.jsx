@@ -268,9 +268,24 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
     return sortDirection === 'asc' ? <FiArrowUp className="inline ml-1" /> : <FiArrowDown className="inline ml-1" />;
   };
 
-  const getReceiptSrc = (url) => {
+  const getReceiptSrc = (url, claimId = selectedExpense?._id, itemIdx = null) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    
+    // Route via secure authenticated API endpoint
+    const token = localStorage.getItem('eers_token');
+    const apiBase = (import.meta.env?.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+    if (claimId) {
+      let receiptEndpoint = `${apiBase}/claims/${claimId}/receipt`;
+      const queryParts = [];
+      if (token) queryParts.push(`token=${encodeURIComponent(token)}`);
+      if (itemIdx !== null && itemIdx !== undefined) queryParts.push(`item=${itemIdx}`);
+      if (queryParts.length > 0) {
+        receiptEndpoint += `?${queryParts.join('&')}`;
+      }
+      return receiptEndpoint;
+    }
+
     const parts = url.split(/[\\/]/);
     const filename = parts[parts.length - 1];
     const baseUrl = (import.meta.env?.VITE_API_BASE_URL 
@@ -629,7 +644,7 @@ const ExpenseTable = ({ expenses, onAction, userRole }) => {
                                 <td className="p-2.5 text-center">
                                   {item.receiptUrl || selectedExpense.receiptUrl ? (
                                     <a
-                                      href={getReceiptSrc(item.receiptUrl || selectedExpense.receiptUrl)}
+                                      href={getReceiptSrc(item.receiptUrl || selectedExpense.receiptUrl, selectedExpense._id, idx)}
                                       target="_blank"
                                       rel="noreferrer"
                                       className="inline-flex items-center gap-1 text-[10px] font-bold text-corporate-600 hover:text-corporate-800 hover:underline bg-corporate-50 px-2 py-0.5 rounded border border-corporate-100"

@@ -4,14 +4,6 @@ import { useToast } from '../context/ToastContext';
 
 const AuthContext = createContext(null);
 
-const ROLE_EMAILS = {
-  employee: 'arjun.sharma@company.com',
-  hod: 'rajesh.deshmukh@company.com',
-  finance: 'vivek.kulkarni@company.com',
-  accounts: 'suresh.iyer@company.com',
-  admin: 'amit.patil@company.com'
-};
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,10 +20,12 @@ export const AuthProvider = ({ children }) => {
             setUser(res.data);
           } else {
             localStorage.removeItem('eers_token');
+            localStorage.removeItem('eers_refresh_token');
           }
         } catch (error) {
           console.error('Session restoration failed:', error.message);
           localStorage.removeItem('eers_token');
+          localStorage.removeItem('eers_refresh_token');
         }
       }
       setLoading(false);
@@ -45,6 +39,9 @@ export const AuthProvider = ({ children }) => {
       const res = await api.post('/auth/login', { email, password });
       if (res.data.success) {
         localStorage.setItem('eers_token', res.data.token);
+        if (res.data.refreshToken) {
+          localStorage.setItem('eers_refresh_token', res.data.refreshToken);
+        }
         setUser(res.data);
         showToast(`Successfully logged in as ${res.data.name}`, 'success');
         return res.data;
@@ -58,27 +55,21 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const switchRole = async (roleKey) => {
-    const email = ROLE_EMAILS[roleKey.toLowerCase()];
-    if (email) {
-      try {
-        await login(email, 'password123');
-      } catch (error) {
-        console.error('Simulator role switch failed:', error.message);
-      }
-    } else {
-      showToast(`Role shortcut ${roleKey} not registered in simulator`, 'error');
+  const logout = async () => {
+    try {
+      const refreshToken = localStorage.getItem('eers_refresh_token');
+      await api.post('/auth/logout', { refreshToken }).catch(() => {});
+    } catch (e) {
+      // Logout should always succeed client-side
     }
-  };
-
-  const logout = () => {
     localStorage.removeItem('eers_token');
+    localStorage.removeItem('eers_refresh_token');
     setUser(null);
     showToast('Signed out of session console.', 'info');
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, switchRole, logout, allRoles: Object.keys(ROLE_EMAILS) }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );

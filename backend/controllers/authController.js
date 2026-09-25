@@ -1,41 +1,88 @@
 import User from '../models/User.js';
+import AuditLog from '../models/AuditLog.js';
 import sendEmail from '../config/nodemailer.js';
 import { 
   generateAccessToken, 
   generateRefreshToken, 
   storeRefreshToken, 
   verifyRefreshToken, 
-  removeRefreshToken, 
+  removeRefreshToken,
+  revokeAllRefreshTokens,
   generatePasswordResetOtp, 
   verifyResetOtp, 
   completePasswordReset 
 } from '../services/authService.js';
 
+// ── Helper: Create audit log (never throws) ────────────────────────────
+const auditLog = async (actor, action, detail, ip) => {
+  try {
+    await AuditLog.create({ actor, action, detail, ipAddress: ip });
+  } catch (err) {
+    // Audit logging must never break the request
+    console.error('Audit log write failed:', err.message);
+  }
+};
+
+// ── Cookie Helpers (HttpOnly, Secure, SameSite) ─────────────────────────
+const setAuthCookies = (res, accessToken, refreshToken) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  if (accessToken) {
+    res.cookie('eers_access_token', accessToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000 // 15 minutes
+    });
+  }
+  if (refreshToken) {
+    res.cookie('eers_refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+  }
+};
+
+const clearAuthCookies = (res) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  res.clearCookie('eers_access_token', { httpOnly: true, secure: isProd, sameSite: 'lax' });
+  res.clearCookie('eers_refresh_token', { httpOnly: true, secure: isProd, sameSite: 'lax' });
+};
+
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
+// SECURITY: Public registration ALWAYS creates Employee role only.
+// Only Admin can create other roles via /api/admin/users
 export const registerUser = async (req, res, next) => {
   try {
-    const { name, email, password, role, department, allottedBudget } = req.body;
+    const { name, email, password, department } = req.body;
+    // CRITICAL: Ignore any role submitted by the client
+    // Public registration can only create Employee accounts.
 
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ email: email.toLowerCase().trim() });
     if (userExists) {
       return res.status(400).json({ success: false, message: 'User already exists' });
     }
 
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password,
-      role: role || 'Employee',
+      role: 'Employee', // FORCED — never trust client-supplied role
       department: department || null,
-      allottedBudget: allottedBudget || 10000
+      allottedBudget: 10000
     });
 
     if (user) {
       const accessToken = generateAccessToken(user._id);
       const refreshToken = generateRefreshToken(user._id);
       await storeRefreshToken(user._id, refreshToken);
+
+      await auditLog(user._id, 'USER_CREATED', `Self-registered Employee account: ${user.email}`, req.ip);
+
+      setAuthCookies(res, accessToken, refreshToken);
 
       res.status(201).json({
         success: true,
@@ -63,14 +110,24 @@ export const loginUser = async (req, res, next) => {
     const { email, password } = req.body;
 
     // Find user and include password field
-    const user = await User.findOne({ email }).select('+password').populate('department');
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password').populate('department');
+    
+    // Use generic error message — never reveal whether email exists
     if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ success: false, message: 'Invalid corporate email or password' });
+      // Log failed attempt
+      if (user) {
+        await auditLog(user._id, 'LOGIN_FAILURE', `Failed login attempt for ${email}`, req.ip);
+      }
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     await storeRefreshToken(user._id, refreshToken);
+
+    await auditLog(user._id, 'LOGIN_SUCCESS', `Successful login: ${user.email} (${user.role})`, req.ip);
+
+    setAuthCookies(res, accessToken, refreshToken);
 
     res.status(200).json({
       success: true,
@@ -148,27 +205,30 @@ export const updateUserProfile = async (req, res, next) => {
   }
 };
 
-// @desc    Token Refresh
+// @desc    Token Refresh with Rotation
 // @route   POST /api/auth/refresh
 // @access  Public
 export const refreshSession = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.eers_refresh_token || req.body?.refreshToken;
     if (!refreshToken) {
       return res.status(400).json({ success: false, message: 'Refresh token is required' });
     }
 
     const user = await verifyRefreshToken(refreshToken);
     if (!user) {
+      clearAuthCookies(res);
       return res.status(401).json({ success: false, message: 'Invalid or expired refresh token' });
     }
 
     const newAccessToken = generateAccessToken(user._id);
     const newRefreshToken = generateRefreshToken(user._id);
 
-    // Rotate refresh token
+    // Rotate refresh token: remove old, store new
     await removeRefreshToken(user._id, refreshToken);
     await storeRefreshToken(user._id, newRefreshToken);
+
+    setAuthCookies(res, newAccessToken, newRefreshToken);
 
     res.status(200).json({
       success: true,
@@ -193,6 +253,14 @@ export const forgotPassword = async (req, res, next) => {
     // Email enumeration protection:
     // If the account does not exist, return generic success message without leaking account existence
     if (!otpData) {
+      return res.status(200).json({
+        success: true,
+        message: 'If an account exists for this corporate email, a 6-digit password reset OTP has been sent.'
+      });
+    }
+
+    // Resend cooldown
+    if (otpData.cooldown) {
       return res.status(200).json({
         success: true,
         message: 'If an account exists for this corporate email, a 6-digit password reset OTP has been sent.'
@@ -259,18 +327,15 @@ export const forgotPassword = async (req, res, next) => {
         html: htmlMessage
       });
 
+      await auditLog(null, 'PASSWORD_RESET_REQUESTED', `Password reset OTP requested for ${cleanEmail}`, req.ip);
+
       // DO NOT expose OTP in response
       res.status(200).json({
         success: true,
         message: 'If an account exists for this corporate email, a 6-digit password reset OTP has been sent.'
       });
     } catch (error) {
-      console.error('Password reset OTP email dispatch failed:');
-      console.error(`Code: ${error.code || 'UNKNOWN'}`);
-      console.error(`Message: ${error.message}`);
-      if (error.response) {
-        console.error(`Response: ${error.response}`);
-      }
+      console.error('Password reset OTP email dispatch failed');
 
       // Clean up fields on email failure
       const user = await User.findOne({ email: cleanEmail });
@@ -279,12 +344,12 @@ export const forgotPassword = async (req, res, next) => {
         user.resetPasswordOtpExpire = undefined;
         user.resetPasswordVerified = false;
         user.resetPasswordOtpAttempts = 0;
-        await user.save();
+        await user.save({ validateModifiedOnly: true });
       }
 
       return res.status(500).json({ 
         success: false, 
-        message: 'Unable to send password reset OTP. Please check your email address or try again later.' 
+        message: 'Unable to send password reset OTP. Please try again later.' 
       });
     }
   } catch (error) {
@@ -301,11 +366,14 @@ export const verifyResetOtpController = async (req, res, next) => {
     const result = await verifyResetOtp(email, otp);
 
     if (!result.success) {
+      await auditLog(null, 'OTP_FAILED', `OTP verification failed for ${email}`, req.ip);
       return res.status(result.status || 400).json({
         success: false,
         message: result.message
       });
     }
+
+    await auditLog(null, 'OTP_VERIFIED', `OTP verified successfully for ${email}`, req.ip);
 
     res.status(200).json({
       success: true,
@@ -325,11 +393,14 @@ export const resetPasswordController = async (req, res, next) => {
 
     const result = await completePasswordReset(email, password);
     if (!result.success) {
+      await auditLog(null, 'PASSWORD_RESET_FAILURE', `Password reset failed for ${email}`, req.ip);
       return res.status(result.status || 400).json({
         success: false,
         message: result.message
       });
     }
+
+    await auditLog(null, 'PASSWORD_RESET_SUCCESS', `Password reset completed for ${email}`, req.ip);
 
     // Do not automatically log the user in.
     res.status(200).json({
@@ -354,12 +425,14 @@ export const changePassword = async (req, res, next) => {
     }
 
     user.password = newPassword;
-    user.refreshTokens = []; // Revoke active refresh tokens
+    user.refreshTokens = []; // Revoke all active refresh tokens
     await user.save();
 
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
     await storeRefreshToken(user._id, refreshToken);
+
+    await auditLog(user._id, 'PASSWORD_CHANGED', `Password changed for ${user.email}`, req.ip);
 
     res.status(200).json({
       success: true,
@@ -377,10 +450,15 @@ export const changePassword = async (req, res, next) => {
 // @access  Private
 export const logoutUser = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
-    if (refreshToken) {
+    const refreshToken = req.cookies?.eers_refresh_token || req.body?.refreshToken;
+    if (refreshToken && req.user?._id) {
       await removeRefreshToken(req.user._id, refreshToken);
     }
+    
+    clearAuthCookies(res);
+    
+    await auditLog(req.user._id, 'LOGOUT', `User logged out: ${req.user.email}`, req.ip);
+    
     res.status(200).json({ success: true, message: 'Successfully signed out of session console.' });
   } catch (error) {
     next(error);

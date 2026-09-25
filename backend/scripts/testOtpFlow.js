@@ -10,7 +10,7 @@ import {
 import { ensureBootstrapData } from './bootstrapDefaults.js';
 
 const TEST_EMAIL = 'udaykale2024.it@mmcoe.edu.in';
-const INITIAL_PASSWORD = 'password123';
+const INITIAL_PASSWORD = 'DevPass@123!';
 const NEW_PASSWORD = 'NewSecurePassword2026!';
 
 let passedCount = 0;

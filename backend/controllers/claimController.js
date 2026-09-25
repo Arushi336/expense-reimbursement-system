@@ -4,9 +4,16 @@ import ApprovalHistory from '../models/ApprovalHistory.js';
 import Payment from '../models/Payment.js';
 import User from '../models/User.js';
 import Department from '../models/Department.js';
+import { getNextClaimId } from '../models/Counter.js';
 import computeHash from '../utils/fileHasher.js';
 import { runPolicyAudit, withdrawClaim } from '../services/claimService.js';
 import { CLAIM_STATUS, WORKFLOW_STEP } from '../config/constants.js';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // @desc    Create / Submit claim
 // @route   POST /api/claims
@@ -31,10 +38,8 @@ export const createClaim = async (req, res, next) => {
     // Run backend business policy checks
     const audit = await runPolicyAudit(Number(amount), categoryId, !!req.file, receiptHash);
 
-    // Generate unique EERS claim identifier code: EXP-YYYY-XXX
-    const year = new Date().getFullYear();
-    const count = await ExpenseClaim.countDocuments();
-    const claimCode = `EXP-${year}-${String(count + 1).padStart(3, '0')}`;
+    // Generate unique EERS claim identifier code: EXP-YYYY-XXX (atomic, concurrency-safe)
+    const claimCode = await getNextClaimId();
 
     const isSubmitted = !(isDraft === 'true' || isDraft === true);
     let status = isSubmitted ? CLAIM_STATUS.SUBMITTED : CLAIM_STATUS.DRAFT;
@@ -57,10 +62,11 @@ export const createClaim = async (req, res, next) => {
     }
 
     // Fallback if single-item payload was sent without items array
+    const resolvedCatId = categoryId || req.body.category;
     if ((!claimItems || claimItems.length === 0) && title && amount) {
       claimItems = [{
         title,
-        categoryId: categoryId || category,
+        categoryId: resolvedCatId,
         merchant,
         amount: Number(amount),
         date: date || new Date(),
@@ -206,14 +212,22 @@ export const getClaims = async (req, res, next) => {
       if (to) query.date.$lte = new Date(to);
     }
 
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const total = await ExpenseClaim.countDocuments(query);
     const claims = await ExpenseClaim.find(query)
       .populate('employee', 'name email avatar')
       .populate('category', 'name code')
       .populate('department', 'name code')
       .populate('items.category', 'name code maxLimit receiptRequired')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    res.status(200).json({ success: true, count: claims.length, data: claims });
+    res.status(200).json({ success: true, count: claims.length, total, page, pages: Math.ceil(total / limit), data: claims });
   } catch (error) {
     next(error);
   }
@@ -450,3 +464,75 @@ export const withdrawClaimController = async (req, res, next) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
+
+// @desc    Securely view / download claim receipt (Authorized users only)
+// @route   GET /api/claims/:id/receipt
+// @access  Private (Owner, HOD of dept, Finance, Accounts, Admin)
+export const getClaimReceipt = async (req, res, next) => {
+  try {
+    const claim = await ExpenseClaim.findById(req.params.id);
+    if (!claim) {
+      return res.status(404).json({ success: false, message: 'Expense claim not found' });
+    }
+
+    // Role-based authorization: Employee can only view their own receipts
+    if (req.user.role === 'Employee' && claim.employee.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to view receipts for this claim' });
+    }
+
+    // HOD can only view receipts for their department
+    if (req.user.role === 'HOD') {
+      const hodDeptId = req.user.department ? (req.user.department._id || req.user.department).toString() : '';
+      const claimDeptId = claim.department ? (claim.department._id || claim.department).toString() : '';
+      if (hodDeptId && claimDeptId && hodDeptId !== claimDeptId) {
+        return res.status(403).json({ success: false, message: 'Not authorized to view receipts for other departments' });
+      }
+    }
+
+    // Determine target receipt URL
+    const itemIndex = req.query.item !== undefined ? parseInt(req.query.item) : null;
+    let targetUrl = '';
+
+    if (itemIndex !== null && !isNaN(itemIndex) && claim.items?.[itemIndex]) {
+      targetUrl = claim.items[itemIndex].receiptUrl || claim.receiptUrl;
+    } else {
+      targetUrl = claim.receiptUrl || (claim.items?.[0]?.receiptUrl || '');
+    }
+
+    if (!targetUrl) {
+      return res.status(404).json({ success: false, message: 'No receipt attached to this claim' });
+    }
+
+    // If Cloudinary or remote URL
+    if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
+      return res.redirect(targetUrl);
+    }
+
+    // If local file on disk
+    const safeFilename = path.basename(targetUrl);
+    const filePath = path.join(__dirname, '../uploads', safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'Receipt file not found on disk' });
+    }
+
+    const ext = path.extname(safeFilename).toLowerCase();
+    const mimeTypes = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.pdf': 'application/pdf'
+    };
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    const readStream = fs.createReadStream(filePath);
+    readStream.pipe(res);
+  } catch (error) {
+    next(error);
+  }
+};
+

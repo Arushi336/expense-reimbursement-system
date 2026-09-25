@@ -2,36 +2,92 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import User from '../models/User.js';
 
-const getJwtSecret = () => process.env.JWT_SECRET || 'supersecretenterpriseexpensereimbursementsystemkey2026';
-const getJwtExpiresIn = () => process.env.JWT_EXPIRES_IN || '7d';
-const getJwtRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'supersecretrefreshkey2026';
+// ── JWT Configuration — NO hardcoded fallbacks ─────────────────────────
+const getJwtSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('FATAL: JWT_SECRET not configured');
+  return secret;
+};
+
+const getJwtExpiresIn = () => process.env.JWT_EXPIRES_IN || '15m'; // 15 min default for access token
+
+const getJwtRefreshSecret = () => {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (!secret) throw new Error('FATAL: JWT_REFRESH_SECRET not configured');
+  return secret;
+};
+
 const getJwtRefreshExpiresIn = () => process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
+// ── Token Generation ────────────────────────────────────────────────────
 export const generateAccessToken = (userId) => {
-  return jwt.sign({ id: userId }, getJwtSecret(), {
-    expiresIn: getJwtExpiresIn()
-  });
+  return jwt.sign(
+    { id: userId, type: 'access' },
+    getJwtSecret(),
+    {
+      expiresIn: getJwtExpiresIn(),
+      issuer: 'eers',
+      audience: 'eers-client'
+    }
+  );
 };
 
 export const generateRefreshToken = (userId) => {
-  return jwt.sign({ id: userId }, getJwtRefreshSecret(), {
-    expiresIn: getJwtRefreshExpiresIn()
-  });
+  const jti = crypto.randomUUID(); // unique token ID for reuse detection
+  return jwt.sign(
+    { id: userId, type: 'refresh', jti },
+    getJwtRefreshSecret(),
+    {
+      expiresIn: getJwtRefreshExpiresIn(),
+      issuer: 'eers',
+      audience: 'eers-client'
+    }
+  );
+};
+
+// ── Refresh Token Hashing — never store raw tokens ─────────────────────
+const hashToken = (token) => {
+  return crypto.createHash('sha256').update(token).digest('hex');
 };
 
 export const storeRefreshToken = async (userId, token) => {
-  await User.findByIdAndUpdate(userId, {
-    $push: { refreshTokens: token }
-  });
+  const hashed = hashToken(token);
+  // Limit max active sessions per user to 5
+  const user = await User.findById(userId).select('+refreshTokens');
+  if (user) {
+    if (user.refreshTokens.length >= 5) {
+      // Remove oldest token
+      user.refreshTokens.shift();
+    }
+    user.refreshTokens.push(hashed);
+    await user.save({ validateModifiedOnly: true });
+  }
 };
 
 export const verifyRefreshToken = async (token) => {
   try {
-    const decoded = jwt.verify(token, getJwtRefreshSecret());
-    const user = await User.findById(decoded.id).select('+password').populate('department');
-    if (!user || !user.refreshTokens.includes(token)) {
+    const decoded = jwt.verify(token, getJwtRefreshSecret(), {
+      issuer: 'eers',
+      audience: 'eers-client'
+    });
+    
+    if (decoded.type !== 'refresh') return null;
+    
+    const hashed = hashToken(token);
+    const user = await User.findById(decoded.id)
+      .select('+refreshTokens')
+      .populate('department');
+    
+    if (!user) return null;
+    
+    // Check if hashed token exists (reuse detection)
+    if (!user.refreshTokens.includes(hashed)) {
+      // Possible token reuse attack — revoke ALL tokens for this user
+      user.refreshTokens = [];
+      await user.save({ validateModifiedOnly: true });
       return null;
     }
+    
     return user;
   } catch (error) {
     return null;
@@ -39,15 +95,19 @@ export const verifyRefreshToken = async (token) => {
 };
 
 export const removeRefreshToken = async (userId, token) => {
+  const hashed = hashToken(token);
   await User.findByIdAndUpdate(userId, {
-    $pull: { refreshTokens: token }
+    $pull: { refreshTokens: hashed }
   });
 };
 
-/**
- * Helper to compute SHA-256 hash for 6-digit OTP
- * Ensures OTP is never stored in plaintext in the database.
- */
+export const revokeAllRefreshTokens = async (userId) => {
+  await User.findByIdAndUpdate(userId, {
+    $set: { refreshTokens: [] }
+  });
+};
+
+// ── OTP Hashing ─────────────────────────────────────────────────────────
 export const hashOtp = (otp) => {
   return crypto.createHash('sha256').update(String(otp)).digest('hex');
 };
@@ -60,6 +120,14 @@ export const generatePasswordResetOtp = async (email) => {
   const user = await User.findOne({ email: email.toLowerCase().trim() });
   if (!user) return null;
 
+  // Resend cooldown: prevent resend within 60 seconds
+  if (user.resetPasswordOtpExpire && user.resetPasswordOtp) {
+    const timeSinceGenerated = Date.now() - (user.resetPasswordOtpExpire.getTime() - 10 * 60 * 1000);
+    if (timeSinceGenerated < 60 * 1000) {
+      return { user, otp: null, cooldown: true };
+    }
+  }
+
   // Cryptographically secure random 6-digit OTP (100000 - 999999)
   const otp = crypto.randomInt(100000, 1000000).toString();
 
@@ -69,7 +137,7 @@ export const generatePasswordResetOtp = async (email) => {
   user.resetPasswordVerified = false;
   user.resetPasswordOtpAttempts = 0;
 
-  await user.save();
+  await user.save({ validateModifiedOnly: true });
   return { user, otp };
 };
 
@@ -98,7 +166,7 @@ export const verifyResetOtp = async (email, otp) => {
     user.resetPasswordOtpExpire = undefined;
     user.resetPasswordVerified = false;
     user.resetPasswordOtpAttempts = 0;
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
     return {
       success: false,
       status: 400,
@@ -112,10 +180,10 @@ export const verifyResetOtp = async (email, otp) => {
     user.resetPasswordOtpExpire = undefined;
     user.resetPasswordVerified = false;
     user.resetPasswordOtpAttempts = 0;
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
     return {
       success: false,
-      status: 400,
+      status: 429,
       message: 'Too many failed verification attempts. This OTP has been invalidated. Please request a new OTP.'
     };
   }
@@ -130,7 +198,7 @@ export const verifyResetOtp = async (email, otp) => {
   if (!isMatch) {
     user.resetPasswordOtpAttempts = (user.resetPasswordOtpAttempts || 0) + 1;
     const attemptsRemaining = 5 - user.resetPasswordOtpAttempts;
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
     return {
       success: false,
       status: 400,
@@ -146,7 +214,7 @@ export const verifyResetOtp = async (email, otp) => {
   user.resetPasswordOtpAttempts = 0;
   // Maintain a 10-minute session window to complete new password entry
   user.resetPasswordOtpExpire = Date.now() + 10 * 60 * 1000;
-  await user.save();
+  await user.save({ validateModifiedOnly: true });
 
   return {
     success: true,
@@ -177,7 +245,7 @@ export const completePasswordReset = async (email, newPassword) => {
     user.resetPasswordVerified = false;
     user.resetPasswordOtp = undefined;
     user.resetPasswordOtpExpire = undefined;
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
     return {
       success: false,
       status: 400,
@@ -191,7 +259,7 @@ export const completePasswordReset = async (email, newPassword) => {
   user.resetPasswordOtpExpire = undefined;
   user.resetPasswordVerified = false;
   user.resetPasswordOtpAttempts = 0;
-  user.refreshTokens = []; // Revoke active sessions
+  user.refreshTokens = []; // Revoke all active sessions
 
   await user.save();
   return {

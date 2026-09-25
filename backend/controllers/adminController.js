@@ -4,8 +4,11 @@ import AuditLog from '../models/AuditLog.js';
 import User from '../models/User.js';
 import SystemSetting from '../models/SystemSetting.js';
 
+// ── Fields to NEVER return in API responses ─────────────────────────────
+const USER_SAFE_FIELDS = '-password -refreshTokens -resetPasswordOtp -resetPasswordOtpExpire -resetPasswordVerified -resetPasswordOtpAttempts';
+
 // ==========================================
-// 1. Audit Logs
+// 1. Audit Logs (paginated)
 // ==========================================
 
 // @desc    Get system audit logs
@@ -13,11 +16,26 @@ import SystemSetting from '../models/SystemSetting.js';
 // @access  Private (Admin)
 export const getAuditLogs = async (req, res, next) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const total = await AuditLog.countDocuments();
     const logs = await AuditLog.find()
       .populate('actor', 'name email role')
-      .sort({ timestamp: -1 });
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    res.status(200).json({ success: true, count: logs.length, data: logs });
+    res.status(200).json({ 
+      success: true, 
+      count: logs.length, 
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      data: logs 
+    });
   } catch (error) {
     next(error);
   }
@@ -32,7 +50,7 @@ export const getAuditLogs = async (req, res, next) => {
 // @access  Private
 export const getDepartments = async (req, res, next) => {
   try {
-    const depts = await Department.find().populate('hod', 'name email');
+    const depts = await Department.find().populate('hod', 'name email').lean();
     res.status(200).json({ success: true, count: depts.length, data: depts });
   } catch (error) {
     next(error);
@@ -140,7 +158,7 @@ export const deleteDepartment = async (req, res, next) => {
 // @access  Private
 export const getCategories = async (req, res, next) => {
   try {
-    const cats = await ExpenseCategory.find({ isActive: true });
+    const cats = await ExpenseCategory.find({ isActive: true }).lean();
     res.status(200).json({ success: true, count: cats.length, data: cats });
   } catch (error) {
     next(error);
@@ -241,39 +259,49 @@ export const deleteCategory = async (req, res, next) => {
 };
 
 // ==========================================
-// 4. User Management CRUD
+// 4. User Management CRUD (DB-level pagination)
 // ==========================================
 
-// @desc    Get all users (paginated, filterable)
+// @desc    Get all users (DB-level pagination)
 // @route   GET /api/admin/users
 // @access  Private (Admin)
 export const getUsers = async (req, res, next) => {
   try {
-    const { role, department, search, page = 1, limit = 10 } = req.query;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+    const { role, department, search } = req.query;
+    
     const query = {};
-
     if (role && role !== 'ALL') query.role = role;
     if (department && department !== 'ALL') query.department = department;
-
-    let users = await User.find(query).populate('department', 'name code');
-
+    
+    // DB-level search using regex (case-insensitive)
     if (search) {
-      const searchLower = search.toLowerCase();
-      users = users.filter(u => 
-        u.name.toLowerCase().includes(searchLower) || 
-        u.email.toLowerCase().includes(searchLower) || 
-        (u.employeeId && u.employeeId.toLowerCase().includes(searchLower))
-      );
+      const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$or = [
+        { name: searchRegex },
+        { email: searchRegex },
+        { employeeId: searchRegex }
+      ];
     }
 
-    const count = users.length;
-    const startIndex = (page - 1) * limit;
-    const paginatedUsers = users.slice(startIndex, startIndex + Number(limit));
+    const total = await User.countDocuments(query);
+    const users = await User.find(query)
+      .select(USER_SAFE_FIELDS) // NEVER return passwords, tokens, OTP fields
+      .populate('department', 'name code')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
     res.status(200).json({
       success: true,
-      count,
-      data: paginatedUsers
+      count: users.length,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      data: users
     });
   } catch (error) {
     next(error);
@@ -306,12 +334,14 @@ export const createUser = async (req, res, next) => {
     // Audit log
     await AuditLog.create({
       actor: req.user._id,
-      action: 'Create User',
-      detail: `Created user account ${name} (${email}) with role: ${role}`,
+      action: 'USER_CREATED',
+      detail: `Admin created user account ${name} (${email}) with role: ${role}`,
       ipAddress: req.ip
     });
 
-    res.status(201).json({ success: true, data: user });
+    // Return without sensitive fields
+    const safeUser = await User.findById(user._id).select(USER_SAFE_FIELDS).populate('department', 'name code').lean();
+    res.status(201).json({ success: true, data: safeUser });
   } catch (error) {
     next(error);
   }
@@ -322,7 +352,10 @@ export const createUser = async (req, res, next) => {
 // @access  Private (Admin)
 export const getUserById = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).populate('department');
+    const user = await User.findById(req.params.id)
+      .select(USER_SAFE_FIELDS)
+      .populate('department')
+      .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -344,6 +377,8 @@ export const updateUser = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const oldRole = user.role;
+    
     user.name = name || user.name;
     user.email = email || user.email;
     user.role = role || user.role;
@@ -354,19 +389,31 @@ export const updateUser = async (req, res, next) => {
 
     if (password && password.trim() !== '') {
       user.password = password;
+      user.refreshTokens = []; // Revoke all sessions on password change
     }
 
     await user.save();
 
+    // Audit role changes specifically
+    if (oldRole !== user.role) {
+      await AuditLog.create({
+        actor: req.user._id,
+        action: 'ROLE_CHANGED',
+        detail: `Admin changed role for ${user.email}: ${oldRole} → ${user.role}`,
+        ipAddress: req.ip
+      });
+    }
+
     // Audit log
     await AuditLog.create({
       actor: req.user._id,
-      action: 'Update User',
-      detail: `Updated user account ${user.name} (${user.email})`,
+      action: 'USER_UPDATED',
+      detail: `Admin updated user account ${user.name} (${user.email})`,
       ipAddress: req.ip
     });
 
-    res.status(200).json({ success: true, data: user });
+    const safeUser = await User.findById(user._id).select(USER_SAFE_FIELDS).populate('department', 'name code').lean();
+    res.status(200).json({ success: true, data: safeUser });
   } catch (error) {
     next(error);
   }
@@ -382,13 +429,18 @@ export const deleteUser = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    // Prevent admin from deleting themselves
+    if (user._id.toString() === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
+    }
+
     await User.findByIdAndDelete(req.params.id);
 
     // Audit log
     await AuditLog.create({
       actor: req.user._id,
-      action: 'Delete User',
-      detail: `Deleted user account ${user.name} (${user.email})`,
+      action: 'USER_DELETED',
+      detail: `Admin deleted user account ${user.name} (${user.email})`,
       ipAddress: req.ip
     });
 
@@ -407,7 +459,7 @@ export const deleteUser = async (req, res, next) => {
 // @access  Private
 export const getSystemSettingsController = async (req, res, next) => {
   try {
-    const settings = await SystemSetting.find();
+    const settings = await SystemSetting.find().lean();
     const settingsMap = {};
     settings.forEach(s => {
       settingsMap[s.key] = s.value;
@@ -450,7 +502,7 @@ export const updateSystemSettingsController = async (req, res, next) => {
     // Audit log
     await AuditLog.create({
       actor: req.user._id,
-      action: 'Update System Settings',
+      action: 'SYSTEM_SETTING_CHANGED',
       detail: `Updated global parameters: travelCap=${travelCap}, mealsCap=${mealsCap}, mileageRate=${mileageRate}`,
       ipAddress: req.ip
     });
