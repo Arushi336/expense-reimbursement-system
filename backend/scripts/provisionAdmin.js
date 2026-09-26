@@ -24,7 +24,7 @@ const getArg = (flag) => {
 
 const email = process.env.ADMIN_EMAIL || getArg('email');
 const password = process.env.ADMIN_PASSWORD || getArg('password');
-const name = process.env.ADMIN_NAME || getArg('name') || 'Enterprise Administrator';
+const name = process.env.ADMIN_NAME || getArg('name');
 const employeeId = process.env.ADMIN_EMP_ID || getArg('emp-id') || 'EMP-ADMIN-01';
 
 const validatePassword = (pass) => {
@@ -36,11 +36,12 @@ const validatePassword = (pass) => {
 };
 
 const run = async () => {
-  if (!email || !password) {
+  if (!email || !password || !name) {
     console.error('═══════════════════════════════════════════════════════════════');
     console.error('EERS Production Admin Provisioning');
     console.error('═══════════════════════════════════════════════════════════════');
     console.error('ERROR: Missing required administrator credentials.');
+    console.error('ADMIN_EMAIL, ADMIN_PASSWORD, and ADMIN_NAME must all be supplied.');
     console.error('');
     console.error('Supply credentials via environment variables:');
     console.error('  ADMIN_EMAIL="admin@company.com" \\');

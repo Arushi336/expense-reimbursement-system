@@ -83,37 +83,8 @@ app.use('/api/auth/refresh', rateLimit({
 app.use(mongoSanitize());
 app.use(xss());
 
-// ── CORS (explicit allowlist) ───────────────────────────────────────────
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
-  .split(',')
-  .map(o => o.trim())
-  .filter(Boolean);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.) in dev
-    if (!origin && !isProd) return callback(null, true);
-    if (corsOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
-  maxAge: 600
-}));
-
-// ── Body Parsing with Size Limits ───────────────────────────────────────
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-app.use(cookieParser());
-
-// ── Static uploads: DISABLED in production ──────────────────────────────
-// In production, serve receipts through authenticated controllers only
-if (!isProd) {
-  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-}
-
-// ── Health Check ────────────────────────────────────────────────────────
+// ── Health Check (Liveness & Readiness Probes) ───────────────────────────
+// Placed before CORS and rate-limiters for reliable infrastructure monitoring
 app.get('/health', async (req, res) => {
   const dbState = mongoose.connection.readyState;
   const dbStatus = dbState === 1 ? 'connected' : dbState === 2 ? 'connecting' : 'disconnected';
@@ -139,6 +110,36 @@ app.get('/health/ready', async (req, res) => {
     res.status(503).json({ status: 'not ready', reason: 'database not connected' });
   }
 });
+
+// ── CORS (explicit allowlist) ───────────────────────────────────────────
+const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow server-to-server, curl, mobile, and non-browser requests with no origin
+    if (!origin) return callback(null, true);
+    if (corsOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+  maxAge: 600
+}));
+
+// ── Body Parsing with Size Limits ───────────────────────────────────────
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(cookieParser());
+
+// ── Static uploads: DISABLED in production ──────────────────────────────
+// In production, serve receipts through authenticated controllers only
+if (!isProd) {
+  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+}
 
 // ── Swagger API Documentation ───────────────────────────────────────────
 // Only available in non-production environments
