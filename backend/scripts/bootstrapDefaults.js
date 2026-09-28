@@ -80,6 +80,16 @@ const devStakeholders = [
     employeeId: 'EMP-006',
     phoneNumber: '+919876543215',
     allottedBudget: 25000
+  },
+  {
+    name: 'Arushi Pande',
+    email: 'arushipande2024.it@mmcoe.edu.in',
+    password: 'DevPass@123!',
+    role: 'Employee',
+    departmentCode: 'IT',
+    employeeId: 'EMP-007',
+    phoneNumber: '+919876543216',
+    allottedBudget: 25000
   }
 ];
 
